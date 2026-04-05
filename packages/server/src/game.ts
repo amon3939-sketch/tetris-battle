@@ -53,19 +53,25 @@ export class ServerGameRoom {
     this.fingerprints.set(socketId, fingerprint);
   }
 
+  private seeds = new Map<string, number>();
+
   start(): void {
     // 各プレイヤーにランダムなseedを割り当ててGameEngineを生成
     for (const socketId of this.playerOrder) {
       const seed = Math.floor(Math.random() * 2147483647);
+      this.seeds.set(socketId, seed);
       const engine = new GameEngine({ seed });
       this.engines.set(socketId, engine);
     }
 
-    // game:ready を送信
-    this.io.to(this.roomId).emit('game:ready', {
-      startAt: Date.now() + 3000,
-      settings: { das: 200, arr: 50 },
-    });
+    // game:ready を各プレイヤーに個別送信（seedを含める）
+    for (const socketId of this.playerOrder) {
+      this.io.to(socketId).emit('game:ready', {
+        startAt: Date.now() + 3000,
+        settings: { das: 200, arr: 50 },
+        seed: this.seeds.get(socketId),
+      });
+    }
 
     // 3秒後にtick開始 + 初期状態を送信
     setTimeout(() => {

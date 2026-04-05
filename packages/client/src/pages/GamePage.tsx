@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socket } from '../socket.ts';
 import type { Board, Piece, PieceType, Action, GameState } from '@tetris/engine/src/types.ts';
+import { GameEngine } from '@tetris/engine/src/engine.ts';
 import { PIECE_SHAPES, PIECE_GRID_SIZE, PIECE_CELL } from '@tetris/engine/src/piece.ts';
 import GameCanvas from '../components/GameCanvas.tsx';
 import type { GameCanvasHandle } from '../components/GameCanvas.tsx';
@@ -21,6 +22,7 @@ interface RoomState {
 interface GameReadyData {
   startAt: number;
   settings: { das: number; arr: number };
+  seed?: number;
 }
 
 interface Props {
@@ -55,14 +57,29 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
   const [muted, setMuted] = useState(false);
   const gameOverFiredRef = useRef(false);
 
+  // ローカルエンジン（クライアント側予測用）
+  const localEngineRef = useRef<GameEngine | null>(null);
+  const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // サーバーから受信したスコア/ライン（権威的データ）
+  const serverScoreRef = useRef(0);
+  const serverLinesRef = useRef(0);
+
   // サウンドのプリロード
   useEffect(() => {
     soundManager.load();
   }, []);
 
-  // Countdown
+  // Countdown + ローカルエンジン初期化
   useEffect(() => {
     if (!gameReadyData) return;
+
+    // seedがあればローカルエンジンを作成
+    if (gameReadyData.seed != null && !localEngineRef.current) {
+      localEngineRef.current = new GameEngine({ seed: gameReadyData.seed });
+      const state = localEngineRef.current.getState();
+      setLocalState(state);
+    }
+
     const updateCountdown = () => {
       const now = Date.now();
       const diff = gameReadyData.startAt - now;
@@ -74,8 +91,28 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
         setTimeout(() => {
           setCountdown(null);
           setGameActive(true);
-          // BGM 再生開始
           soundManager.playBGM();
+
+          // ローカルの重力tickを開始
+          if (localEngineRef.current) {
+            localTickRef.current = setInterval(() => {
+              const engine = localEngineRef.current;
+              if (!engine) return;
+              const result = engine.tick(16);
+              // 重力やロックによるライン消去
+              if (result && result.linesCleared > 0) {
+                soundManager.playLineClear(result.linesCleared);
+                if (canvasRef.current) {
+                  const rows: number[] = [];
+                  for (let i = 0; i < result.linesCleared; i++) {
+                    rows.push(19 - i);
+                  }
+                  canvasRef.current.triggerLineClear(rows);
+                }
+              }
+              setLocalState(engine.getState());
+            }, 16);
+          }
         }, 500);
         return;
       }
@@ -83,27 +120,42 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
     };
     requestAnimationFrame(updateCountdown);
     return () => {
-      // アンマウント時にBGM停止
       soundManager.stopBGM();
+      if (localTickRef.current) {
+        clearInterval(localTickRef.current);
+        localTickRef.current = null;
+      }
     };
   }, [gameReadyData]);
 
-  // Socket events
+  // Socket events（サーバーからの権威的データ受信）
   useEffect(() => {
     const onStateAck = (data: any) => {
-      setLocalState({
-        board: data.board,
-        currentPiece: data.currentPiece,
-        holdPiece: data.holdPiece,
-        holdUsed: data.holdUsed,
-        nextQueue: data.nextQueue,
-        isGameOver: data.isGameOver,
-        combo: data.combo,
-        b2bActive: data.b2bActive,
-        score: data.score,
-        linesCleared: data.linesCleared,
-        level: data.level,
-      });
+      // サーバーのスコア/ラインを権威的データとして保存
+      serverScoreRef.current = data.score ?? 0;
+      serverLinesRef.current = data.linesCleared ?? 0;
+
+      // ゲームオーバーはサーバーの判定を信頼
+      if (data.isGameOver && localEngineRef.current) {
+        setLocalState(prev => prev ? { ...prev, isGameOver: true, score: data.score, linesCleared: data.linesCleared } : prev);
+      }
+
+      // ローカルエンジンがない場合（seed未対応のフォールバック）
+      if (!localEngineRef.current) {
+        setLocalState({
+          board: data.board,
+          currentPiece: data.currentPiece,
+          holdPiece: data.holdPiece,
+          holdUsed: data.holdUsed,
+          nextQueue: data.nextQueue,
+          isGameOver: data.isGameOver,
+          combo: data.combo,
+          b2bActive: data.b2bActive,
+          score: data.score,
+          linesCleared: data.linesCleared,
+          level: data.level,
+        });
+      }
     };
 
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
@@ -118,6 +170,10 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
     const onAttackReceive = (data: { lines: number }) => {
       setIncomingAttack(prev => prev + data.lines);
       soundManager.playSE('garbage');
+      // ローカルエンジンにもおじゃまを反映
+      if (localEngineRef.current) {
+        localEngineRef.current.receiveGarbage(data.lines);
+      }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);
     };
@@ -126,12 +182,12 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
       setKoList(prev => new Set(prev).add(data.socketId));
     };
 
+    // サーバーからのライン消去イベント（ローカルエンジンがない場合のフォールバック）
     const onLineClear = (data: { linesCleared: number }) => {
-      // ライン消去SE
+      if (localEngineRef.current) return; // ローカルエンジンが処理済み
       if (data.linesCleared > 0) {
         soundManager.playLineClear(data.linesCleared);
       }
-      // ライン消去エフェクトをトリガー
       if (canvasRef.current && data.linesCleared > 0) {
         const rows: number[] = [];
         for (let i = 0; i < data.linesCleared; i++) {
@@ -165,9 +221,10 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
     }
   }, [localState?.isGameOver]);
 
-  // Send action + SE + hard drop エフェクト
+  // Send action + ローカル即時反映 + SE + エフェクト
   const sendAction = useCallback((action: Action) => {
     seqRef.current++;
+    // サーバーにも送信（攻撃処理・スコア記録等のため）
     socket.emit('input:action', { action, seq: seqRef.current });
 
     // アクション別SE
@@ -175,30 +232,76 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
     else if (action === 'rotate_cw' || action === 'rotate_ccw') soundManager.playSE('rotate');
     else if (action === 'hold') soundManager.playSE('hold');
 
-    // ハードドロップエフェクト
-    if (action === 'hard_drop' && localState?.currentPiece && localState?.board && canvasRef.current) {
-      const piece = localState.currentPiece;
-      // ゴースト位置を計算
-      let y = piece.y;
-      while (true) {
-        const nextY = y + 1;
-        const shape = PIECE_SHAPES[piece.type];
-        const gridSize = PIECE_GRID_SIZE[piece.type];
-        let cells = shape.map(([r, c]) => [r, c] as [number, number]);
-        for (let i = 0; i < piece.rotation; i++) {
-          cells = cells.map(([r, c]) => [c, gridSize - 1 - r]);
+    const engine = localEngineRef.current;
+    if (engine) {
+      // ハードドロップエフェクト（ローカルエンジンの現在ピースから計算）
+      const stateBefore = engine.getState();
+      if (action === 'hard_drop' && stateBefore.currentPiece && canvasRef.current) {
+        const piece = stateBefore.currentPiece;
+        let y = piece.y;
+        while (true) {
+          const nextY = y + 1;
+          const shape = PIECE_SHAPES[piece.type];
+          const gridSize = PIECE_GRID_SIZE[piece.type];
+          let cells = shape.map(([r, c]) => [r, c] as [number, number]);
+          for (let i = 0; i < piece.rotation; i++) {
+            cells = cells.map(([r, c]) => [c, gridSize - 1 - r]);
+          }
+          const boardCells = cells.map(([r, c]) => [r + nextY, c + piece.x] as [number, number]);
+          const collision = boardCells.some(([r, c]) => {
+            if (c < 0 || c >= 10 || r >= 20) return true;
+            if (r >= 0 && stateBefore.board[r][c] !== 0) return true;
+            return false;
+          });
+          if (collision) break;
+          y = nextY;
         }
-        const boardCells = cells.map(([r, c]) => [r + nextY, c + piece.x] as [number, number]);
-        const collision = boardCells.some(([r, c]) => {
-          if (c < 0 || c >= 10 || r >= 20) return true;
-          if (r >= 0 && localState.board[r][c] !== 0) return true;
-          return false;
-        });
-        if (collision) break;
-        y = nextY;
+        const finalCells = getPieceCellsForRender({ ...piece, y });
+        canvasRef.current.triggerHardDrop(finalCells);
       }
-      const finalCells = getPieceCellsForRender({ ...piece, y });
-      canvasRef.current.triggerHardDrop(finalCells);
+
+      // ローカルエンジンに即座に適用
+      const result = engine.applyAction(action);
+
+      // ライン消去SE＋エフェクト（ハードドロップによるライン消去）
+      if (result && result.linesCleared > 0) {
+        soundManager.playLineClear(result.linesCleared);
+        if (canvasRef.current) {
+          const rows: number[] = [];
+          for (let i = 0; i < result.linesCleared; i++) {
+            rows.push(19 - i);
+          }
+          canvasRef.current.triggerLineClear(rows);
+        }
+      }
+
+      // 即座にローカル状態を更新（遅延ゼロ）
+      setLocalState(engine.getState());
+    } else {
+      // ローカルエンジンがない場合の旧フォールバック
+      if (action === 'hard_drop' && localState?.currentPiece && localState?.board && canvasRef.current) {
+        const piece = localState.currentPiece;
+        let y = piece.y;
+        while (true) {
+          const nextY = y + 1;
+          const shape = PIECE_SHAPES[piece.type];
+          const gridSize = PIECE_GRID_SIZE[piece.type];
+          let cells = shape.map(([r, c]) => [r, c] as [number, number]);
+          for (let i = 0; i < piece.rotation; i++) {
+            cells = cells.map(([r, c]) => [c, gridSize - 1 - r]);
+          }
+          const boardCells = cells.map(([r, c]) => [r + nextY, c + piece.x] as [number, number]);
+          const collision = boardCells.some(([r, c]) => {
+            if (c < 0 || c >= 10 || r >= 20) return true;
+            if (r >= 0 && localState.board[r][c] !== 0) return true;
+            return false;
+          });
+          if (collision) break;
+          y = nextY;
+        }
+        const finalCells = getPieceCellsForRender({ ...piece, y });
+        canvasRef.current.triggerHardDrop(finalCells);
+      }
     }
   }, [localState]);
 
