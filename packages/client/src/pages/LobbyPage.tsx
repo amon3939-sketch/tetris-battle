@@ -296,13 +296,8 @@ function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname:
 
 function ShareUrlBox() {
   const [copied, setCopied] = useState(false);
-  const { hostname, port, protocol } = window.location;
+  const { hostname } = window.location;
   const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
-
-  // 表示するURL: localhostでなければそのまま表示
-  const shareUrl = isLocal
-    ? `このURLは自分専用です。相手に共有するには以下のコマンドを実行してください`
-    : window.location.origin;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(window.location.origin);
@@ -313,29 +308,8 @@ function ShareUrlBox() {
   return (
     <div className="card" style={{ padding: '10px 12px', fontSize: 13 }}>
       {isLocal ? (
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <span style={{ color: '#f0a000', fontWeight: 700 }}>共有方法</span>
-          </div>
-          <div style={{ marginBottom: 6, color: '#aaa', fontSize: 12 }}>
-            離れた相手と対戦するには、ターミナルで以下を実行してURLを共有:
-          </div>
-          <code style={{
-            display: 'block',
-            background: '#0a0a1a',
-            padding: '6px 10px',
-            borderRadius: 4,
-            color: '#4caf50',
-            fontSize: 13,
-            wordBreak: 'break-all',
-            userSelect: 'all',
-            marginBottom: 6,
-          }}>
-            npx localtunnel --port 3001
-          </code>
-          <div style={{ color: '#666', fontSize: 11 }}>
-            表示された https://xxxxx.loca.lt のURLを相手に送ってください
-          </div>
+        <div style={{ color: '#aaa', fontSize: 12 }}>
+          ローカル環境で実行中です。離れた場所の相手と対戦するにはクラウドにデプロイしてください。
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
