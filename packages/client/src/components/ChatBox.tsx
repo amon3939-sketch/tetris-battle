@@ -13,7 +13,7 @@ interface Props {
 
 export default function ChatBox({ roomId }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const myNickname = useRef<string>('');
 
@@ -42,10 +42,12 @@ export default function ChatBox({ roomId }: Props) {
   }, [messages]);
 
   const handleSend = () => {
-    const text = input.trim().slice(0, 140);
+    const el = inputRef.current;
+    if (!el) return;
+    const text = el.value.trim().slice(0, 140);
     if (!text) return;
     socket.emit('chat:send', { text });
-    setInput('');
+    el.value = '';
   };
 
   return (
@@ -98,8 +100,8 @@ export default function ChatBox({ roomId }: Props) {
       </div>
       <div style={{ display: 'flex', borderTop: '1px solid #2a2a4a' }}>
         <input
-          value={input}
-          onChange={e => setInput(e.target.value.slice(0, 140))}
+          ref={inputRef}
+          maxLength={140}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder="メッセージ..."
           style={{

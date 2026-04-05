@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { socket } from '../socket.ts';
 import { generateFingerprint } from '../fingerprint.ts';
+import { soundManager } from '../sounds.ts';
 
 interface RoomListItem {
   id: string;
@@ -35,6 +36,11 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
 
   // 接続 + ニックネーム設定
   useEffect(() => {
+    // サウンドのプリロード + ロビーBGM
+    soundManager.load().then(() => {
+      soundManager.playBGM('lobby');
+    });
+
     const onConnect = () => {
       setConnected(true);
       const name = nickname || 'Guest';

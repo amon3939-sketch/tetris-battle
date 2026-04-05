@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { socket } from '../socket.ts';
+import { soundManager } from '../sounds.ts';
 
 interface GameOverData {
   winnerId: string;
@@ -11,6 +13,14 @@ interface Props {
 }
 
 export default function ResultPage({ gameOverData, goToLobby }: Props) {
+  // リザルトBGM再生
+  useEffect(() => {
+    soundManager.playBGM('result');
+    return () => {
+      soundManager.stopBGM();
+    };
+  }, []);
+
   if (!gameOverData) return null;
 
   const { ranking } = gameOverData;

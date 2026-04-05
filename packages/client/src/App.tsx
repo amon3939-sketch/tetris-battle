@@ -4,6 +4,7 @@ import LobbyPage from './pages/LobbyPage.tsx';
 import WaitingPage from './pages/WaitingPage.tsx';
 import GamePage from './pages/GamePage.tsx';
 import ResultPage from './pages/ResultPage.tsx';
+import { soundManager } from './sounds.ts';
 import type { Board } from '@tetris/engine/src/types.ts';
 
 type Screen = 'lobby' | 'waiting' | 'game' | 'result';
@@ -18,6 +19,7 @@ interface RoomState {
 interface GameReadyData {
   startAt: number;
   settings: { das: number; arr: number };
+  seed?: number;
 }
 
 interface GameOverData {
@@ -31,6 +33,9 @@ export default function App() {
   const [gameReadyData, setGameReadyData] = useState<GameReadyData | null>(null);
   const [gameOverData, setGameOverData] = useState<GameOverData | null>(null);
   const [nickname, setNickname] = useState(() => localStorage.getItem('tetris_nickname') || '');
+  // ソロモード時: game:over を受けても即座に result に遷移せず GamePage 内で待つ
+  const pendingGameOverRef = useRef<GameOverData | null>(null);
+  const isSoloRef = useRef(false);
 
   useEffect(() => {
     const onRoomState = (data: RoomState) => {
@@ -38,16 +43,29 @@ export default function App() {
       if (data.status === 'waiting' && screen === 'lobby') {
         setScreen('waiting');
       }
+      // 1人プレイかどうかを記録
+      isSoloRef.current = data.players.length === 1;
     };
 
     const onGameReady = (data: GameReadyData) => {
       setGameReadyData(data);
+      pendingGameOverRef.current = null;
       setScreen('game');
     };
 
     const onGameOver = (data: GameOverData) => {
-      setGameOverData(data);
-      setScreen('result');
+      if (isSoloRef.current) {
+        // ソロモード: 即座にリザルトに行かず保留
+        pendingGameOverRef.current = data;
+        setGameOverData(data);
+        // GamePage から goToResult() が呼ばれるのを待つ
+      } else {
+        // 対戦モード: 即座にリザルト画面へ
+        setGameOverData(data);
+        setScreen('result');
+        soundManager.stopBGM();
+        soundManager.playBGM('result');
+      }
     };
 
     socket.on('room:state', onRoomState);
@@ -66,12 +84,28 @@ export default function App() {
     setRoomState(null);
     setGameReadyData(null);
     setGameOverData(null);
+    pendingGameOverRef.current = null;
+    isSoloRef.current = false;
+    soundManager.stopBGM();
+    soundManager.playBGM('lobby');
     setScreen('lobby');
   }, []);
+
+  // ソロモード: ゲームオーバー画面から明示的にリザルトへ遷移
+  const goToResult = useCallback(() => {
+    if (gameOverData) {
+      soundManager.stopBGM();
+      soundManager.playBGM('result');
+      setScreen('result');
+    }
+  }, [gameOverData]);
 
   const goToWaitingFromLobby = useCallback(() => {
     setScreen('waiting');
   }, []);
+
+  // ソロかどうかを判定（GamePageに渡す）
+  const isSolo = (roomState?.players.length ?? 0) <= 1;
 
   switch (screen) {
     case 'lobby':
@@ -84,6 +118,9 @@ export default function App() {
           roomState={roomState}
           gameReadyData={gameReadyData}
           nickname={nickname}
+          isSolo={isSolo}
+          gameOverData={gameOverData}
+          goToResult={goToResult}
         />
       );
     case 'result':

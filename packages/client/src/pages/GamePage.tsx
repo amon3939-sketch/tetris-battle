@@ -25,10 +25,18 @@ interface GameReadyData {
   seed?: number;
 }
 
+interface GameOverData {
+  winnerId: string;
+  ranking: Array<{ socketId: string; nickname: string; rank: number; score?: number; linesCleared?: number }>;
+}
+
 interface Props {
   roomState: RoomState | null;
   gameReadyData: GameReadyData | null;
   nickname: string;
+  isSolo: boolean;
+  gameOverData: GameOverData | null;
+  goToResult: () => void;
 }
 
 function getPieceCellsForRender(piece: Piece): [number, number][] {
@@ -41,7 +49,7 @@ function getPieceCellsForRender(piece: Piece): [number, number][] {
   return cells.map(([r, c]) => [r + piece.y, c + piece.x]);
 }
 
-export default function GamePage({ roomState, gameReadyData, nickname }: Props) {
+export default function GamePage({ roomState, gameReadyData, nickname, isSolo, gameOverData, goToResult }: Props) {
   const [localState, setLocalState] = useState<GameState | null>(null);
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
@@ -91,7 +99,7 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
         setTimeout(() => {
           setCountdown(null);
           setGameActive(true);
-          soundManager.playBGM();
+          soundManager.playBGM('play');
 
           // ローカルの重力tickを開始
           if (localEngineRef.current) {
@@ -310,6 +318,9 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
 
+  // 対戦で勝者かどうか
+  const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
+
   return (
     <div style={{
       display: 'flex',
@@ -388,7 +399,44 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
           currentPiece={localState?.currentPiece ?? null}
           incomingAttack={incomingAttack}
         />
-        {localState?.isGameOver && (
+        {/* ソロ: GAME OVER + リザルトへボタン */}
+        {isSolo && localState?.isGameOver && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.7)',
+            borderRadius: 4,
+            gap: 24,
+          }}>
+            <div style={{
+              fontSize: 40,
+              fontWeight: 900,
+              color: '#e74c3c',
+              textShadow: '0 0 30px rgba(231,76,60,0.6)',
+              letterSpacing: 4,
+            }}>
+              GAME OVER
+            </div>
+            <button
+              className="btn-primary"
+              onClick={goToResult}
+              style={{
+                padding: '14px 36px',
+                fontSize: 18,
+                fontWeight: 700,
+                animation: 'pulse 1.5s ease-in-out infinite',
+              }}
+            >
+              リザルトを見る
+            </button>
+          </div>
+        )}
+        {/* 対戦: 自分がゲームオーバー */}
+        {!isSolo && localState?.isGameOver && !isWinner && (
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -399,6 +447,29 @@ export default function GamePage({ roomState, gameReadyData, nickname }: Props) 
             borderRadius: 4,
           }}>
             <div style={{ fontSize: 32, fontWeight: 900, color: '#e74c3c' }}>GAME OVER</div>
+          </div>
+        )}
+        {/* 対戦: WINNER!! */}
+        {!isSolo && isWinner && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.6)',
+            borderRadius: 4,
+          }}>
+            <div style={{
+              fontSize: 44,
+              fontWeight: 900,
+              color: '#ffd700',
+              textShadow: '0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.4)',
+              letterSpacing: 6,
+              animation: 'pulse 1s ease-in-out infinite',
+            }}>
+              WINNER!!
+            </div>
           </div>
         )}
       </div>

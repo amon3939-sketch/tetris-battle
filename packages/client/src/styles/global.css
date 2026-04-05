@@ -137,3 +137,8 @@ input:focus {
   font-size: 13px;
   margin-top: 8px;
 }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.85; }
+}
