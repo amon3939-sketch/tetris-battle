@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.db
+.env
+.DS_Store
+files/
+files.zip
+.claude/
+package-lock.json
