@@ -86,7 +86,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const settings = gameReadyData?.settings ?? { das: 200, arr: 50 };
   const [muted, setMuted] = useState(false);
   const gameOverFiredRef = useRef(false);
-  const [showStamps, setShowStamps] = useState(false);
+  const [showStamps, setShowStamps] = useState(true);
   const [receivedStamp, setReceivedStamp] = useState<{text: string; style: string; nickname: string} | null>(null);
 
   const STAMPS = [
@@ -284,13 +284,18 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   }, []);
 
   // ゲームオーバー検知 → SE即時再生 + BGMフェードアウト
+  const gameOverDetected = !!localState?.isGameOver || !!gameOverData;
   useEffect(() => {
-    if (localState?.isGameOver && !gameOverFiredRef.current) {
+    if (gameOverDetected && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       soundManager.playSE('gameover');
       soundManager.fadeOutBGM(1200);
+      // 勝者の場合もローカルエンジンを停止
+      if (localEngineRef.current) {
+        localEngineRef.current.pause();
+      }
     }
-  }, [localState?.isGameOver]);
+  }, [gameOverDetected]);
 
   // Send action + ローカル即時反映 + SE + エフェクト
   const sendAction = useCallback((action: Action) => {
@@ -374,7 +379,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   // ポーズ切替
   const togglePause = useCallback(() => {
-    if (!isSolo || !gameActive || localState?.isGameOver) return;
+    if (!isSolo || !gameActive || isGameOver) return;
     const engine = localEngineRef.current;
     if (!engine) return;
     if (engine.isPaused()) {
@@ -384,17 +389,17 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       engine.pause();
       setPaused(true);
     }
-  }, [isSolo, gameActive, localState?.isGameOver]);
+  }, [isSolo, gameActive, isGameOver]);
 
   // メニュー表示
   const openMenu = useCallback(() => {
-    if (isSolo && localEngineRef.current && gameActive && !localState?.isGameOver) {
+    if (isSolo && localEngineRef.current && gameActive && !isGameOver) {
       localEngineRef.current.pause();
       setPaused(true);
     }
     setShowMenu(true);
     setShowOptions(false);
-  }, [isSolo, gameActive, localState?.isGameOver]);
+  }, [isSolo, gameActive, isGameOver]);
 
   const closeMenu = useCallback(() => {
     setShowMenu(false);
@@ -411,12 +416,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showMenu) closeMenu();
-        else if (gameActive && !localState?.isGameOver) openMenu();
+        else if (gameActive && !isGameOver) openMenu();
       }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [showMenu, gameActive, localState?.isGameOver, openMenu, closeMenu]);
+  }, [showMenu, gameActive, isGameOver, openMenu, closeMenu]);
 
   // キー割り当てリスナー
   useEffect(() => {
@@ -461,13 +466,15 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     soundManager.setSEVolume(seVol);
   }, []);
 
-  // Input handler (ポーズ中・メニュー中は無効)
-  useInputHandler(gameActive && !(localState?.isGameOver) && !paused && !showMenu, settings, sendAction, keyMap);
+  // Input handler (ポーズ中・メニュー中・ゲームオーバー時は無効)
+  useInputHandler(gameActive && !isGameOver && !paused && !showMenu, settings, sendAction, keyMap);
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
 
   // 対戦で勝者かどうか
   const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
+  // ゲーム終了判定: ローカルエンジンのgameOver OR サーバーからgame:over受信
+  const isGameOver = !!localState?.isGameOver || !!gameOverData;
 
   return (
     <div style={{
@@ -717,10 +724,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           board={localState?.board ?? null}
           currentPiece={localState?.currentPiece ?? null}
           incomingAttack={incomingAttack}
-          isGameOver={!!localState?.isGameOver}
+          isGameOver={isGameOver}
         />
         {/* Game over overlays */}
-        {localState?.isGameOver && (
+        {isGameOver && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
