@@ -491,9 +491,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           onClick={() => {
             const nowMuted = soundManager.toggleMute();
             setMuted(nowMuted);
-            if (!nowMuted && gameActive) {
-              soundManager.playBGM('play');
-            }
           }}
           style={{
             background: 'rgba(30,30,60,0.8)',

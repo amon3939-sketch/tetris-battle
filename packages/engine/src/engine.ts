@@ -179,13 +179,11 @@ export class GameEngine {
       }
     }
 
-    // おじゃま処理
+    // おじゃま処理（ボード上部のブロックが押し出されても即ゲームオーバーにはしない。
+    // 次のピースがスポーンできない場合にのみゲームオーバーとなる）
     for (const garbage of this.pendingGarbage) {
       const garbageResult = addGarbage(this.board, garbage.lines);
       this.board = garbageResult.board;
-      if (garbageResult.overflow) {
-        this.isGameOver = true;
-      }
     }
     this.pendingGarbage = [];
 

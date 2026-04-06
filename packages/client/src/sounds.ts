@@ -118,8 +118,6 @@ class SoundManager {
 
   /** BGM 再生（タイプ指定） */
   playBGM(type: BGMType = 'play'): void {
-    if (this.muted) return;
-
     // 同じタイプが既に再生中ならスキップ（play以外）
     if (type !== 'play' && this.currentBGMType === type && this.bgmAudio && !this.bgmAudio.paused) {
       return;
@@ -134,7 +132,7 @@ class SoundManager {
 
     const url = this.getBGMUrl(type);
     this.bgmAudio = new Audio(url);
-    this.bgmAudio.volume = this.bgmVolume;
+    this.bgmAudio.volume = this.muted ? 0 : this.bgmVolume;
     this.currentBGMType = type;
 
     if (type === 'play') {
@@ -151,11 +149,10 @@ class SoundManager {
   /** プレイBGM終了時に次のランダム曲を再生 */
   private onBGMEnded = (): void => {
     if (this.currentBGMType !== 'play') return;
-    if (this.muted) return;
 
     const url = this.getBGMUrl('play');
     this.bgmAudio = new Audio(url);
-    this.bgmAudio.volume = this.bgmVolume;
+    this.bgmAudio.volume = this.muted ? 0 : this.bgmVolume;
     this.bgmAudio.addEventListener('ended', this.onBGMEnded);
     this.bgmAudio.play().catch(() => {});
   };
@@ -189,11 +186,19 @@ class SoundManager {
     }, 50);
   }
 
-  /** ミュート切替 */
+  /** ミュート切替（BGMは再生し続け、音量だけ0にする） */
   toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.muted) {
-      this.stopBGM();
+      // 音量を0にするだけ（再生は続ける）
+      if (this.bgmAudio) {
+        this.bgmAudio.volume = 0;
+      }
+    } else {
+      // 保存済みの音量に戻す
+      if (this.bgmAudio) {
+        this.bgmAudio.volume = this.bgmVolume;
+      }
     }
     return this.muted;
   }
