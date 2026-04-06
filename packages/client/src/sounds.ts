@@ -12,22 +12,24 @@ type SEName =
   | 'line1'
   | 'line2'
   | 'line3'
-  | 'line4';
+  | 'line4'
+  | 'countdown';
 
 const SE_FILES: Record<SEName, string> = {
-  harddrop: '/sounds/harddrop.mp3',
-  rotate:   '/sounds/rotate.mp3',
-  hold:     '/sounds/hold.mp3',
-  gameover: '/sounds/gameover.mp3',
-  garbage:  '/sounds/garbage.mp3',
-  line1:    '/sounds/line1.mp3',
-  line2:    '/sounds/line2.mp3',
-  line3:    '/sounds/line3.mp3',
-  line4:    '/sounds/line4.mp3',
+  harddrop:  '/sounds/harddrop.mp3',
+  rotate:    '/sounds/rotate.mp3',
+  hold:      '/sounds/hold.mp3',
+  gameover:  '/sounds/gameover.mp3',
+  garbage:   '/sounds/garbage.mp3',
+  line1:     '/sounds/line1.mp3',
+  line2:     '/sounds/line2.mp3',
+  line3:     '/sounds/line3.mp3',
+  line4:     '/sounds/line4.mp3',
+  countdown: '/sounds/countdown.mp3',
 };
 
 // プレイ中BGM（ランダム再生）
-const PLAY_BGM_COUNT = 24; // bgm_play_00.mp3 ~ bgm_play_23.mp3
+const PLAY_BGM_COUNT = 25; // bgm_play_00.mp3 ~ bgm_play_24.mp3
 const PLAY_BGM_FILES = Array.from({ length: PLAY_BGM_COUNT }, (_, i) =>
   `/sounds/bgm_play_${String(i).padStart(2, '0')}.mp3`
 );

@@ -112,6 +112,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   // メニュー
   const [showMenu, setShowMenu] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   // オプション
   const [bgmVol, setBgmVol] = useState(() => {
     const v = localStorage.getItem('tetris_bgm_vol');
@@ -141,6 +142,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       setLocalState(state);
     }
 
+    let countdownSEPlayed = false;
     const updateCountdown = () => {
       const now = Date.now();
       const diff = gameReadyData.startAt - now;
@@ -149,6 +151,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       else if (diff > 0) setCountdown('1');
       else {
         setCountdown('GO!');
+      }
+      // カウントダウンSEを「3」表示のタイミングで再生開始
+      if (diff <= 3000 && !countdownSEPlayed) {
+        countdownSEPlayed = true;
+        soundManager.playSE('countdown');
+      }
+      if (diff <= 0) {
         setTimeout(() => {
           setCountdown(null);
           setGameActive(true);
@@ -390,6 +399,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const closeMenu = useCallback(() => {
     setShowMenu(false);
     setShowOptions(false);
+    setShowQuitConfirm(false);
     if (isSolo && localEngineRef.current) {
       localEngineRef.current.resume();
       setPaused(false);
@@ -508,7 +518,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       </div>
 
       {/* Menu overlay */}
-      {showMenu && !showOptions && (
+      {showMenu && !showOptions && !showQuitConfirm && (
         <div style={{
           position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'rgba(0,0,0,0.7)', zIndex: 250,
@@ -524,9 +534,33 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
             <button className="btn-secondary" onClick={() => setShowOptions(true)} style={{ padding: '12px', fontSize: 16 }}>
               オプション
             </button>
-            <button className="btn-danger" onClick={quitGame} style={{ padding: '12px', fontSize: 16 }}>
+            <button className="btn-danger" onClick={() => setShowQuitConfirm(true)} style={{ padding: '12px', fontSize: 16 }}>
               終了する
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quit confirmation overlay */}
+      {showQuitConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)', zIndex: 260,
+        }}>
+          <div style={{
+            background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12,
+            padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14,
+            textAlign: 'center',
+          }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>終了してもよろしいですか？</h2>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
+              <button className="btn-danger" onClick={() => { setShowQuitConfirm(false); setShowMenu(false); quitGame(); }} style={{ padding: '12px 28px', fontSize: 16 }}>
+                はい
+              </button>
+              <button className="btn-secondary" onClick={() => setShowQuitConfirm(false)} style={{ padding: '12px 28px', fontSize: 16 }}>
+                いいえ
+              </button>
+            </div>
           </div>
         </div>
       )}

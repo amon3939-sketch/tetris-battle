@@ -74,7 +74,7 @@ export default function HoldBox({ holdPiece, holdUsed }: Props) {
   });
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ fontSize: 13, color: '#fff', marginBottom: 4, textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>HOLD</div>
       <canvas
         ref={canvasRef}
