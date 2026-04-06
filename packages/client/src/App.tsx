@@ -54,18 +54,8 @@ export default function App() {
     };
 
     const onGameOver = (data: GameOverData) => {
-      if (isSoloRef.current) {
-        // ソロモード: 即座にリザルトに行かず保留
-        pendingGameOverRef.current = data;
-        setGameOverData(data);
-        // GamePage から goToResult() が呼ばれるのを待つ
-      } else {
-        // 対戦モード: 即座にリザルト画面へ
-        setGameOverData(data);
-        setScreen('result');
-        soundManager.stopBGM();
-        soundManager.playBGM('result');
-      }
+      setGameOverData(data);
+      // Don't auto-navigate. GamePage will show overlay and user clicks to proceed.
     };
 
     socket.on('room:state', onRoomState);

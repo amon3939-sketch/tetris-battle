@@ -56,18 +56,26 @@ export function clearLines(board: Board): { board: Board; linesCleared: number; 
   };
 }
 
-export function addGarbage(board: Board, lines: number): Board {
+export function addGarbage(board: Board, lines: number): { board: Board; overflow: boolean } {
   const newBoard = board.map(row => [...row]) as Board;
-  // 上にlines行分スクロール（上の行は消える）
+  // Check if any non-empty cells exist in the rows being pushed off the top
+  let overflow = false;
+  for (let r = 0; r < lines; r++) {
+    if (r < ROWS && newBoard[r].some(cell => cell !== 0)) {
+      overflow = true;
+      break;
+    }
+  }
+  // Shift up by removing top rows
   newBoard.splice(0, lines);
-  // 下にガーベージ行を追加（各行ごとにランダムな穴位置）
+  // Add garbage rows at bottom
   for (let i = 0; i < lines; i++) {
     const garbageRow = Array(COLS).fill(8 as Cell) as Cell[];
     const hole = Math.floor(Math.random() * COLS);
     garbageRow[hole] = 0 as Cell;
     newBoard.push(garbageRow);
   }
-  return newBoard;
+  return { board: newBoard as Board, overflow };
 }
 
 export function isBoardEmpty(board: Board): boolean {

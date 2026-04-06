@@ -181,7 +181,11 @@ export class GameEngine {
 
     // おじゃま処理
     for (const garbage of this.pendingGarbage) {
-      this.board = addGarbage(this.board, garbage.lines);
+      const garbageResult = addGarbage(this.board, garbage.lines);
+      this.board = garbageResult.board;
+      if (garbageResult.overflow) {
+        this.isGameOver = true;
+      }
     }
     this.pendingGarbage = [];
 

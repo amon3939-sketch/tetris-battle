@@ -179,6 +179,17 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       });
     });
 
+    // スタンプ送信
+    socket.on('stamp:send', ({ text, style }: { text: string; style: string }) => {
+      const room = roomManager.getRoomBySocketId(socket.id);
+      if (!room) return;
+      io.to(room.id).emit('stamp:receive', {
+        nickname: socket.data.nickname ?? 'Guest',
+        text,
+        style,
+      });
+    });
+
     // 切断
     socket.on('disconnect', () => {
       console.log(`Disconnected: ${socket.id}`);

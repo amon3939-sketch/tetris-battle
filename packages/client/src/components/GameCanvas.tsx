@@ -118,9 +118,10 @@ interface Props {
   board: Board | null;
   currentPiece: Piece | null;
   incomingAttack: number;
+  isGameOver: boolean;
 }
 
-const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, incomingAttack }, ref) => {
+const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, incomingAttack, isGameOver }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const effectsRef = useRef<{
     hardDrops: HardDropEffect[];
@@ -128,6 +129,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
     particles: Particle[];
   }>({ hardDrops: [], lineClears: [], particles: [] });
   const animFrameRef = useRef<number>(0);
+  const gameOverStartRef = useRef<number | null>(null);
 
   useImperativeHandle(ref, () => ({
     triggerHardDrop(cells: [number, number][]) {
@@ -242,6 +244,26 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         }
       }
 
+      // Game over gray-out animation (top to bottom, one row at a time)
+      if (isGameOver && board) {
+        if (!gameOverStartRef.current) {
+          gameOverStartRef.current = now;
+        }
+        const elapsed = now - gameOverStartRef.current;
+        const ROW_DELAY = 50; // ms per row
+        for (let r = 0; r < 20; r++) {
+          const rowStart = r * ROW_DELAY;
+          if (elapsed >= rowStart) {
+            const rowProgress = Math.min(1, (elapsed - rowStart) / 200); // 200ms fade per row
+            const alpha = rowProgress * 0.75;
+            ctx.fillStyle = `rgba(60, 60, 60, ${alpha})`;
+            ctx.fillRect(0, r * CELL_SIZE, BOARD_WIDTH, CELL_SIZE);
+          }
+        }
+      } else {
+        gameOverStartRef.current = null;
+      }
+
       // Draw ghost piece
       if (currentPiece) {
         const ghostY = getGhostY(board, currentPiece);
@@ -354,7 +376,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
 
     animFrameRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [board, currentPiece, incomingAttack]);
+  }, [board, currentPiece, incomingAttack, isGameOver]);
 
   return (
     <canvas

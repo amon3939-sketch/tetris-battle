@@ -37,8 +37,9 @@ describe('board', () => {
 
   it('おじゃまライン追加（各行にランダムな穴が1つ空く）', () => {
     const board = createEmptyBoard();
-    const newBoard = addGarbage(board, 2);
+    const { board: newBoard, overflow } = addGarbage(board, 2);
     expect(newBoard.length).toBe(20);
+    expect(overflow).toBe(false);
     // 最下2行がガーベージ（各行に穴が1つ）
     for (const rowIdx of [18, 19]) {
       const row = newBoard[rowIdx];

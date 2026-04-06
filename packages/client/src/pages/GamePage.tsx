@@ -86,6 +86,19 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const settings = gameReadyData?.settings ?? { das: 200, arr: 50 };
   const [muted, setMuted] = useState(false);
   const gameOverFiredRef = useRef(false);
+  const [showStamps, setShowStamps] = useState(false);
+  const [receivedStamp, setReceivedStamp] = useState<{text: string; style: string; nickname: string} | null>(null);
+
+  const STAMPS = [
+    { id: 'ganbare', text: '頑張れ！', style: 'pop' },
+    { id: 'yabai', text: 'やばい！', style: 'pop' },
+    { id: 'nice', text: 'ナイス！', style: 'pop' },
+    { id: 'sugoi', text: 'すごい！', style: 'pop' },
+    { id: 'makenaizo', text: '負けないぞ', style: 'serious' },
+    { id: 'mada', text: 'まだまだ', style: 'serious' },
+    { id: 'gg', text: 'GG', style: 'pop' },
+    { id: 'wwww', text: 'ｗｗｗｗ', style: 'pop' },
+  ];
 
   // ローカルエンジン（クライアント側予測用）
   const localEngineRef = useRef<GameEngine | null>(null);
@@ -238,11 +251,18 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       }
     };
 
+    const onStamp = (data: { text: string; style: string; nickname: string }) => {
+      if (data.nickname === nickname) return; // Don't show own stamps
+      setReceivedStamp(data);
+      setTimeout(() => setReceivedStamp(null), 2000);
+    };
+
     socket.on('game:state_ack', onStateAck);
     socket.on('board:update', onBoardUpdate);
     socket.on('attack:receive', onAttackReceive);
     socket.on('player:ko', onPlayerKO);
     socket.on('game:line_clear', onLineClear);
+    socket.on('stamp:receive', onStamp);
 
     return () => {
       socket.off('game:state_ack', onStateAck);
@@ -250,6 +270,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       socket.off('attack:receive', onAttackReceive);
       socket.off('player:ko', onPlayerKO);
       socket.off('game:line_clear', onLineClear);
+      socket.off('stamp:receive', onStamp);
     };
   }, []);
 
@@ -419,6 +440,11 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     localStorage.setItem('tetris_se_vol', String(v));
   }, []);
 
+  const sendStamp = useCallback((stamp: typeof STAMPS[0]) => {
+    socket.emit('stamp:send', { text: stamp.text, style: stamp.style });
+    setShowStamps(false);
+  }, []);
+
   // 初期音量設定
   useEffect(() => {
     soundManager.setBGMVolume(bgmVol);
@@ -460,26 +486,15 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         >
           MENU
         </button>
-        {/* Solo pause button */}
-        {isSolo && gameActive && !localState?.isGameOver && (
-          <button
-            onClick={togglePause}
-            style={{
-              background: paused ? 'rgba(74,108,247,0.8)' : 'rgba(30,30,60,0.8)',
-              border: '1px solid #3a3a5c',
-              borderRadius: 8,
-              padding: '6px 12px',
-              color: '#fff',
-              fontSize: 14,
-              cursor: 'pointer',
-            }}
-          >
-            {paused ? '▶' : '⏸'}
-          </button>
-        )}
         {/* Mute button */}
         <button
-          onClick={() => setMuted(soundManager.toggleMute())}
+          onClick={() => {
+            const nowMuted = soundManager.toggleMute();
+            setMuted(nowMuted);
+            if (!nowMuted && gameActive) {
+              soundManager.playBGM('play');
+            }
+          }}
           style={{
             background: 'rgba(30,30,60,0.8)',
             border: '1px solid #3a3a5c',
@@ -494,21 +509,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           {muted ? '🔇' : '🔊'}
         </button>
       </div>
-
-      {/* Pause overlay (solo) */}
-      {paused && !showMenu && (
-        <div style={{
-          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'rgba(0,0,0,0.6)', zIndex: 200,
-        }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', marginBottom: 16 }}>PAUSE</div>
-            <button className="btn-primary" onClick={togglePause} style={{ padding: '12px 32px', fontSize: 16 }}>
-              再開
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Menu overlay */}
       {showMenu && !showOptions && (
@@ -652,6 +652,31 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           )}
         </div>
         <ChatBox roomId={roomState?.room?.id ?? ''} />
+        {/* Stamp button + panel */}
+        <div style={{ position: 'relative' }}>
+          <button className="btn-secondary" onClick={() => setShowStamps(!showStamps)}
+            style={{ width: '100%', fontSize: 13, padding: '6px' }}>
+            スタンプ
+          </button>
+          {showStamps && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 0, right: 0,
+              background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 8,
+              padding: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6,
+              marginBottom: 4, zIndex: 50,
+            }}>
+              {STAMPS.map(s => (
+                <button key={s.id} onClick={() => sendStamp(s)} style={{
+                  background: s.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : '#2a2a4a',
+                  color: '#fff', border: 'none', borderRadius: 6, padding: '6px 4px',
+                  fontSize: s.style === 'pop' ? 13 : 12, cursor: 'pointer',
+                  fontFamily: s.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                  fontWeight: s.style === 'pop' ? 700 : 400,
+                }}>{s.text}</button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Center: Main board */}
@@ -661,78 +686,36 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           board={localState?.board ?? null}
           currentPiece={localState?.currentPiece ?? null}
           incomingAttack={incomingAttack}
+          isGameOver={!!localState?.isGameOver}
         />
-        {/* ソロ: GAME OVER + リザルトへボタン */}
-        {isSolo && localState?.isGameOver && (
+        {/* Game over overlays */}
+        {localState?.isGameOver && (
           <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.7)',
-            borderRadius: 4,
-            gap: 24,
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.7)', borderRadius: 4, gap: 24,
           }}>
-            <div style={{
-              fontSize: 40,
-              fontWeight: 900,
-              color: '#e74c3c',
-              textShadow: '0 0 30px rgba(231,76,60,0.6)',
-              letterSpacing: 4,
-            }}>
-              GAME OVER
-            </div>
-            <button
-              className="btn-primary"
-              onClick={goToResult}
-              style={{
-                padding: '14px 36px',
-                fontSize: 18,
-                fontWeight: 700,
-                animation: 'pulse 1.5s ease-in-out infinite',
-              }}
-            >
-              リザルトを見る
-            </button>
-          </div>
-        )}
-        {/* 対戦: 自分がゲームオーバー */}
-        {!isSolo && localState?.isGameOver && !isWinner && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.6)',
-            borderRadius: 4,
-          }}>
-            <div style={{ fontSize: 32, fontWeight: 900, color: '#e74c3c' }}>GAME OVER</div>
-          </div>
-        )}
-        {/* 対戦: WINNER!! */}
-        {!isSolo && isWinner && (
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.6)',
-            borderRadius: 4,
-          }}>
-            <div style={{
-              fontSize: 44,
-              fontWeight: 900,
-              color: '#ffd700',
-              textShadow: '0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.4)',
-              letterSpacing: 6,
-              animation: 'pulse 1s ease-in-out infinite',
-            }}>
-              WINNER!!
-            </div>
+            {isWinner ? (
+              <div style={{
+                fontSize: 44, fontWeight: 900, color: '#ffd700',
+                textShadow: '0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.4)',
+                letterSpacing: 6, animation: 'pulse 1s ease-in-out infinite',
+              }}>WINNER!!</div>
+            ) : isSolo ? (
+              <div style={{
+                fontSize: 40, fontWeight: 900, color: '#e74c3c',
+                textShadow: '0 0 30px rgba(231,76,60,0.6)', letterSpacing: 4,
+              }}>GAME OVER</div>
+            ) : (
+              <div style={{
+                fontSize: 40, fontWeight: 900, color: '#e74c3c',
+                textShadow: '0 0 30px rgba(231,76,60,0.6)', letterSpacing: 4,
+              }}>YOU LOSE</div>
+            )}
+            <button className="btn-primary" onClick={goToResult} style={{
+              padding: '14px 36px', fontSize: 18, fontWeight: 700,
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }}>リザルトを見る</button>
           </div>
         )}
       </div>
@@ -768,6 +751,36 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           </div>
         )}
       </div>
+      {/* Received stamp display */}
+      {receivedStamp && (
+        <div style={{
+          position: 'fixed', top: '30%', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 400, pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out',
+        }}>
+          <div style={{
+            padding: '16px 32px', borderRadius: 16,
+            background: receivedStamp.style === 'pop'
+              ? 'linear-gradient(135deg, #ff6b6b, #ffa500)'
+              : 'rgba(22,22,42,0.95)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>
+              {receivedStamp.nickname}
+            </div>
+            <div style={{
+              fontSize: receivedStamp.style === 'pop' ? 28 : 22,
+              fontWeight: receivedStamp.style === 'pop' ? 900 : 400,
+              color: '#fff',
+              fontFamily: receivedStamp.style === 'serious'
+                ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+              textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+            }}>
+              {receivedStamp.text}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
