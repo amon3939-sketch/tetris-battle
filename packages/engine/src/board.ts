@@ -33,10 +33,18 @@ export function placePiece(board: Board, piece: Piece): Board {
   return newBoard;
 }
 
-export function clearLines(board: Board): { board: Board; linesCleared: number } {
-  const remaining = board.filter(row => row.some(cell => cell === 0));
-  const linesCleared = ROWS - remaining.length;
-  if (linesCleared === 0) return { board, linesCleared: 0 };
+export function clearLines(board: Board): { board: Board; linesCleared: number; clearedRows: number[] } {
+  const clearedRows: number[] = [];
+  const remaining: Cell[][] = [];
+  for (let r = 0; r < ROWS; r++) {
+    if (board[r].every(cell => cell !== 0)) {
+      clearedRows.push(r);
+    } else {
+      remaining.push(board[r]);
+    }
+  }
+  const linesCleared = clearedRows.length;
+  if (linesCleared === 0) return { board, linesCleared: 0, clearedRows: [] };
 
   const emptyRows: Board = Array.from({ length: linesCleared }, () =>
     Array(COLS).fill(0) as Cell[]
@@ -44,17 +52,19 @@ export function clearLines(board: Board): { board: Board; linesCleared: number }
   return {
     board: [...emptyRows, ...remaining] as Board,
     linesCleared,
+    clearedRows,
   };
 }
 
-export function addGarbage(board: Board, lines: number, column: number): Board {
+export function addGarbage(board: Board, lines: number): Board {
   const newBoard = board.map(row => [...row]) as Board;
   // 上にlines行分スクロール（上の行は消える）
   newBoard.splice(0, lines);
-  // 下にガーベージ行を追加
+  // 下にガーベージ行を追加（各行ごとにランダムな穴位置）
   for (let i = 0; i < lines; i++) {
     const garbageRow = Array(COLS).fill(8 as Cell) as Cell[];
-    garbageRow[column] = 0 as Cell; // 穴
+    const hole = Math.floor(Math.random() * COLS);
+    garbageRow[hole] = 0 as Cell;
     newBoard.push(garbageRow);
   }
   return newBoard;

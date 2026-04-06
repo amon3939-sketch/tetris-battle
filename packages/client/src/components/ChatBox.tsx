@@ -16,6 +16,7 @@ export default function ChatBox({ roomId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const myNickname = useRef<string>('');
+  const composingRef = useRef(false); // IME入力中フラグ
 
   useEffect(() => {
     myNickname.current = localStorage.getItem('tetris_nickname') || 'Guest';
@@ -102,7 +103,11 @@ export default function ChatBox({ roomId }: Props) {
         <input
           ref={inputRef}
           maxLength={140}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !composingRef.current) handleSend();
+          }}
           placeholder="メッセージ..."
           style={{
             flex: 1,

@@ -201,6 +201,27 @@ class SoundManager {
   isMuted(): boolean {
     return this.muted;
   }
+
+  /** BGM音量を設定 (0-100) */
+  setBGMVolume(vol: number): void {
+    this.bgmVolume = Math.max(0, Math.min(1, vol / 100));
+    if (this.bgmAudio) {
+      this.bgmAudio.volume = this.bgmVolume;
+    }
+  }
+
+  /** SE音量を設定 (0-100) */
+  setSEVolume(vol: number): void {
+    this.seVolume = Math.max(0, Math.min(1, vol / 100));
+  }
+
+  getBGMVolume(): number {
+    return Math.round(this.bgmVolume * 100);
+  }
+
+  getSEVolume(): number {
+    return Math.round(this.seVolume * 100);
+  }
 }
 
 // シングルトン

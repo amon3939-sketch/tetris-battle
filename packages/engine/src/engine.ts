@@ -17,6 +17,21 @@ const LOCK_DELAY_MS = 500;
 const MAX_LOCK_RESETS = 15;
 const NEXT_QUEUE_SIZE = 5;
 
+/** Gravity interval (ms) per level, indexed by level (1-based). Level 11+ uses index 11. */
+const GRAVITY_TABLE: Record<number, number> = {
+  1: 1000,
+  2: 793,
+  3: 618,
+  4: 473,
+  5: 355,
+  6: 262,
+  7: 190,
+  8: 135,
+  9: 94,
+  10: 64,
+  11: 48,
+};
+
 export class GameEngine {
   private board: Board;
   private currentPiece: Piece | null = null;
@@ -47,12 +62,35 @@ export class GameEngine {
   // Pending garbage
   private pendingGarbage: { lines: number }[] = [];
 
+  // Pause state
+  private paused = false;
+
   constructor(config: GameConfig) {
     this.level = config.level ?? 1;
     this.bag = new SevenBag(config.seed);
     this.board = createEmptyBoard();
+    this.updateGravity();
     this.fillNextQueue();
     this.spawnNextPiece();
+  }
+
+  /** Recalculate level and gravity interval based on totalLinesCleared. */
+  private updateGravity(): void {
+    this.level = Math.floor(this.totalLinesCleared / 10) + 1;
+    const cappedLevel = Math.min(this.level, 11);
+    this.gravityInterval = GRAVITY_TABLE[cappedLevel];
+  }
+
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
   }
 
   private fillNextQueue(): void {
@@ -109,7 +147,7 @@ export class GameEngine {
     this.board = placePiece(this.board, this.currentPiece);
 
     // ライン消去
-    const { board: newBoard, linesCleared } = clearLines(this.board);
+    const { board: newBoard, linesCleared, clearedRows } = clearLines(this.board);
     this.board = newBoard;
 
     // Perfect Clear判定
@@ -122,11 +160,13 @@ export class GameEngine {
       this.combo,
       this.b2bActive,
       isPerfectClear,
+      clearedRows,
     );
 
     // 状態更新
     this.score += result.linesCleared > 0 ? this.calculateScore(result) : 0;
     this.totalLinesCleared += linesCleared;
+    this.updateGravity();
     this.combo = result.combo;
 
     // B2B更新
@@ -141,7 +181,7 @@ export class GameEngine {
 
     // おじゃま処理
     for (const garbage of this.pendingGarbage) {
-      this.board = addGarbage(this.board, garbage.lines, Math.floor(Math.random() * 10));
+      this.board = addGarbage(this.board, garbage.lines);
     }
     this.pendingGarbage = [];
 
@@ -204,6 +244,7 @@ export class GameEngine {
   }
 
   applyAction(action: Action): LineClearResult | null {
+    if (this.paused) return null;
     if (this.isGameOver || !this.currentPiece) return null;
 
     switch (action) {
@@ -277,6 +318,7 @@ export class GameEngine {
   }
 
   tick(deltaMs: number): LineClearResult | null {
+    if (this.paused) return null;
     if (this.isGameOver || !this.currentPiece) return null;
 
     const grounded = this.checkGrounded();

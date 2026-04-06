@@ -37,6 +37,28 @@ interface Props {
   isSolo: boolean;
   gameOverData: GameOverData | null;
   goToResult: () => void;
+  quitGame: () => void;
+}
+
+// キー設定のデフォルト
+const DEFAULT_KEY_MAP: Record<string, Action> = {
+  'ArrowLeft': 'move_left',
+  'ArrowRight': 'move_right',
+  'ArrowDown': 'soft_drop',
+  'ArrowUp': 'hard_drop',
+  ' ': 'rotate_cw',
+  'Shift': 'hold',
+};
+
+function loadKeyMap(): Record<string, Action> {
+  try {
+    const saved = localStorage.getItem('tetris_keymap');
+    return saved ? JSON.parse(saved) : { ...DEFAULT_KEY_MAP };
+  } catch { return { ...DEFAULT_KEY_MAP }; }
+}
+
+function saveKeyMap(map: Record<string, Action>) {
+  localStorage.setItem('tetris_keymap', JSON.stringify(map));
 }
 
 function getPieceCellsForRender(piece: Piece): [number, number][] {
@@ -49,7 +71,7 @@ function getPieceCellsForRender(piece: Piece): [number, number][] {
   return cells.map(([r, c]) => [r + piece.y, c + piece.x]);
 }
 
-export default function GamePage({ roomState, gameReadyData, nickname, isSolo, gameOverData, goToResult }: Props) {
+export default function GamePage({ roomState, gameReadyData, nickname, isSolo, gameOverData, goToResult, quitGame }: Props) {
   const [localState, setLocalState] = useState<GameState | null>(null);
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
@@ -71,6 +93,24 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   // サーバーから受信したスコア/ライン（権威的データ）
   const serverScoreRef = useRef(0);
   const serverLinesRef = useRef(0);
+
+  // ポーズ（ソロのみ）
+  const [paused, setPaused] = useState(false);
+  // メニュー
+  const [showMenu, setShowMenu] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+  // オプション
+  const [bgmVol, setBgmVol] = useState(() => {
+    const v = localStorage.getItem('tetris_bgm_vol');
+    return v ? Number(v) : 35;
+  });
+  const [seVol, setSeVol] = useState(() => {
+    const v = localStorage.getItem('tetris_se_vol');
+    return v ? Number(v) : 60;
+  });
+  // キー設定
+  const [keyMap, setKeyMap] = useState(loadKeyMap);
+  const [rebindAction, setRebindAction] = useState<Action | null>(null);
 
   // サウンドのプリロード
   useEffect(() => {
@@ -111,11 +151,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
               if (result && result.linesCleared > 0) {
                 soundManager.playLineClear(result.linesCleared);
                 if (canvasRef.current) {
-                  const rows: number[] = [];
-                  for (let i = 0; i < result.linesCleared; i++) {
-                    rows.push(19 - i);
-                  }
-                  canvasRef.current.triggerLineClear(rows);
+                  canvasRef.current.triggerLineClear(result.clearedRows);
                 }
               }
               setLocalState(engine.getState());
@@ -191,16 +227,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
 
     // サーバーからのライン消去イベント（ローカルエンジンがない場合のフォールバック）
-    const onLineClear = (data: { linesCleared: number }) => {
+    const onLineClear = (data: { linesCleared: number; clearedRows?: number[] }) => {
       if (localEngineRef.current) return; // ローカルエンジンが処理済み
       if (data.linesCleared > 0) {
         soundManager.playLineClear(data.linesCleared);
       }
       if (canvasRef.current && data.linesCleared > 0) {
-        const rows: number[] = [];
-        for (let i = 0; i < data.linesCleared; i++) {
-          rows.push(19 - i);
-        }
+        const rows = data.clearedRows ?? Array.from({ length: data.linesCleared }, (_, i) => 19 - i);
         canvasRef.current.triggerLineClear(rows);
       }
     };
@@ -275,11 +308,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       if (result && result.linesCleared > 0) {
         soundManager.playLineClear(result.linesCleared);
         if (canvasRef.current) {
-          const rows: number[] = [];
-          for (let i = 0; i < result.linesCleared; i++) {
-            rows.push(19 - i);
-          }
-          canvasRef.current.triggerLineClear(rows);
+          canvasRef.current.triggerLineClear(result.clearedRows);
         }
       }
 
@@ -313,8 +342,91 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     }
   }, [localState]);
 
-  // Input handler
-  useInputHandler(gameActive && !(localState?.isGameOver), settings, sendAction);
+  // ポーズ切替
+  const togglePause = useCallback(() => {
+    if (!isSolo || !gameActive || localState?.isGameOver) return;
+    const engine = localEngineRef.current;
+    if (!engine) return;
+    if (engine.isPaused()) {
+      engine.resume();
+      setPaused(false);
+    } else {
+      engine.pause();
+      setPaused(true);
+    }
+  }, [isSolo, gameActive, localState?.isGameOver]);
+
+  // メニュー表示
+  const openMenu = useCallback(() => {
+    if (isSolo && localEngineRef.current && gameActive && !localState?.isGameOver) {
+      localEngineRef.current.pause();
+      setPaused(true);
+    }
+    setShowMenu(true);
+    setShowOptions(false);
+  }, [isSolo, gameActive, localState?.isGameOver]);
+
+  const closeMenu = useCallback(() => {
+    setShowMenu(false);
+    setShowOptions(false);
+    if (isSolo && localEngineRef.current) {
+      localEngineRef.current.resume();
+      setPaused(false);
+    }
+  }, [isSolo]);
+
+  // Escキーでメニュー表示/非表示
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showMenu) closeMenu();
+        else if (gameActive && !localState?.isGameOver) openMenu();
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showMenu, gameActive, localState?.isGameOver, openMenu, closeMenu]);
+
+  // キー割り当てリスナー
+  useEffect(() => {
+    if (!rebindAction) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      if (e.key === 'Escape') { setRebindAction(null); return; }
+      // 既存のキーを削除してから新しいキーを設定
+      const newMap = { ...keyMap };
+      for (const [k, v] of Object.entries(newMap)) {
+        if (v === rebindAction) delete newMap[k];
+      }
+      newMap[e.key] = rebindAction;
+      setKeyMap(newMap);
+      saveKeyMap(newMap);
+      setRebindAction(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [rebindAction, keyMap]);
+
+  // 音量変更
+  const handleBgmVol = useCallback((v: number) => {
+    setBgmVol(v);
+    soundManager.setBGMVolume(v);
+    localStorage.setItem('tetris_bgm_vol', String(v));
+  }, []);
+  const handleSeVol = useCallback((v: number) => {
+    setSeVol(v);
+    soundManager.setSEVolume(v);
+    localStorage.setItem('tetris_se_vol', String(v));
+  }, []);
+
+  // 初期音量設定
+  useEffect(() => {
+    soundManager.setBGMVolume(bgmVol);
+    soundManager.setSEVolume(seVol);
+  }, []);
+
+  // Input handler (ポーズ中・メニュー中は無効)
+  useInputHandler(gameActive && !(localState?.isGameOver) && !paused && !showMenu, settings, sendAction, keyMap);
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
 
@@ -331,26 +443,177 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       minHeight: '100vh',
       position: 'relative',
     }}>
-      {/* Mute button */}
-      <button
-        onClick={() => setMuted(soundManager.toggleMute())}
-        style={{
-          position: 'fixed',
-          top: 12,
-          right: 12,
-          zIndex: 300,
-          background: 'rgba(30,30,60,0.8)',
-          border: '1px solid #3a3a5c',
-          borderRadius: 8,
-          padding: '6px 12px',
-          color: '#fff',
-          fontSize: 18,
-          cursor: 'pointer',
-        }}
-        title={muted ? 'サウンドON' : 'ミュート'}
-      >
-        {muted ? '🔇' : '🔊'}
-      </button>
+      {/* Top right buttons */}
+      <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
+        {/* Menu button */}
+        <button
+          onClick={openMenu}
+          style={{
+            background: 'rgba(30,30,60,0.8)',
+            border: '1px solid #3a3a5c',
+            borderRadius: 8,
+            padding: '6px 12px',
+            color: '#fff',
+            fontSize: 14,
+            cursor: 'pointer',
+          }}
+        >
+          MENU
+        </button>
+        {/* Solo pause button */}
+        {isSolo && gameActive && !localState?.isGameOver && (
+          <button
+            onClick={togglePause}
+            style={{
+              background: paused ? 'rgba(74,108,247,0.8)' : 'rgba(30,30,60,0.8)',
+              border: '1px solid #3a3a5c',
+              borderRadius: 8,
+              padding: '6px 12px',
+              color: '#fff',
+              fontSize: 14,
+              cursor: 'pointer',
+            }}
+          >
+            {paused ? '▶' : '⏸'}
+          </button>
+        )}
+        {/* Mute button */}
+        <button
+          onClick={() => setMuted(soundManager.toggleMute())}
+          style={{
+            background: 'rgba(30,30,60,0.8)',
+            border: '1px solid #3a3a5c',
+            borderRadius: 8,
+            padding: '6px 12px',
+            color: '#fff',
+            fontSize: 18,
+            cursor: 'pointer',
+          }}
+          title={muted ? 'サウンドON' : 'ミュート'}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
+      </div>
+
+      {/* Pause overlay (solo) */}
+      {paused && !showMenu && (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.6)', zIndex: 200,
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', marginBottom: 16 }}>PAUSE</div>
+            <button className="btn-primary" onClick={togglePause} style={{ padding: '12px 32px', fontSize: 16 }}>
+              再開
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Menu overlay */}
+      {showMenu && !showOptions && (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)', zIndex: 250,
+        }}>
+          <div style={{
+            background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12,
+            padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14,
+          }}>
+            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 20 }}>メニュー</h2>
+            <button className="btn-primary" onClick={closeMenu} style={{ padding: '12px', fontSize: 16 }}>
+              プレイ中画面に戻る
+            </button>
+            <button className="btn-secondary" onClick={() => setShowOptions(true)} style={{ padding: '12px', fontSize: 16 }}>
+              オプション
+            </button>
+            <button className="btn-danger" onClick={quitGame} style={{ padding: '12px', fontSize: 16 }}>
+              終了する
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Options overlay */}
+      {showMenu && showOptions && (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)', zIndex: 250,
+        }}>
+          <div style={{
+            background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12,
+            padding: 28, minWidth: 360, maxHeight: '80vh', overflowY: 'auto',
+          }}>
+            <h2 style={{ textAlign: 'center', margin: '0 0 16px', fontSize: 20 }}>オプション</h2>
+
+            {/* BGM Volume */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
+                <span style={{ minWidth: 80 }}>BGM音量</span>
+                <input type="range" min={0} max={100} value={bgmVol}
+                  onChange={e => handleBgmVol(Number(e.target.value))}
+                  style={{ flex: 1 }} />
+                <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{bgmVol}%</span>
+              </label>
+            </div>
+
+            {/* SE Volume */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
+                <span style={{ minWidth: 80 }}>SE音量</span>
+                <input type="range" min={0} max={100} value={seVol}
+                  onChange={e => handleSeVol(Number(e.target.value))}
+                  style={{ flex: 1 }} />
+                <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{seVol}%</span>
+              </label>
+            </div>
+
+            {/* Key bindings */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ color: '#aaa', fontSize: 14, marginBottom: 8 }}>ボタン割り当て</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {([
+                    ['move_left', '左移動'],
+                    ['move_right', '右移動'],
+                    ['soft_drop', 'ソフトドロップ'],
+                    ['hard_drop', 'ハードドロップ'],
+                    ['rotate_cw', '右回転'],
+                    ['rotate_ccw', '左回転'],
+                    ['hold', 'ホールド'],
+                  ] as [Action, string][]).map(([action, label]) => {
+                    const currentKey = Object.entries(keyMap).find(([, v]) => v === action)?.[0] ?? '-';
+                    const isRebinding = rebindAction === action;
+                    return (
+                      <tr key={action} style={{ borderBottom: '1px solid #2a2a4a' }}>
+                        <td style={{ padding: '6px 4px', color: '#ccc' }}>{label}</td>
+                        <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => setRebindAction(isRebinding ? null : action)}
+                            style={{
+                              background: isRebinding ? '#4a6cf7' : '#2a2a4a',
+                              color: '#fff', border: 'none', borderRadius: 4,
+                              padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+                              minWidth: 80,
+                            }}
+                          >
+                            {isRebinding ? 'キーを押して...' : displayKey(currentKey)}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <button className="btn-secondary" onClick={() => setShowOptions(false)}
+              style={{ width: '100%', padding: '10px', fontSize: 15 }}>
+              戻る
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Countdown overlay */}
       {countdown && (
@@ -511,4 +774,22 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
 function emptyMiniBoard(): Board {
   return Array.from({ length: 20 }, () => Array(10).fill(0));
+}
+
+function displayKey(key: string): string {
+  const map: Record<string, string> = {
+    ' ': 'Space',
+    'ArrowLeft': '←',
+    'ArrowRight': '→',
+    'ArrowUp': '↑',
+    'ArrowDown': '↓',
+    'Shift': 'Shift',
+    'Control': 'Ctrl',
+    'Alt': 'Alt',
+    'Meta': 'Cmd',
+    'Enter': 'Enter',
+    'Backspace': 'BS',
+    'Tab': 'Tab',
+  };
+  return map[key] ?? key.toUpperCase();
 }

@@ -127,7 +127,7 @@ export class ServerGameRoom {
 
     // ライン消去イベント（ハードドロップでのライン消去に対応）
     if (result && result.linesCleared > 0) {
-      this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared });
+      this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared, clearedRows: result.clearedRows });
     }
 
     // ゲームオーバーチェック
@@ -190,7 +190,7 @@ export class ServerGameRoom {
           linesCleared: state.linesCleared,
         });
         if (result.linesCleared > 0) {
-          this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared });
+          this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared, clearedRows: result.clearedRows });
         }
       }
 

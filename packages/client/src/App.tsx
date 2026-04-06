@@ -100,8 +100,27 @@ export default function App() {
     }
   }, [gameOverData]);
 
-  const goToWaitingFromLobby = useCallback(() => {
+  // ゲーム終了後にルームに戻る（同じメンバーで再戦）
+  const goToRoom = useCallback(() => {
+    socket.emit('game:backToRoom');
+    setGameReadyData(null);
+    setGameOverData(null);
+    pendingGameOverRef.current = null;
+    soundManager.stopBGM();
     setScreen('waiting');
+  }, []);
+
+  // プレイ中メニューからの終了（ロビーに戻る）
+  const quitGame = useCallback(() => {
+    socket.emit('room:leave');
+    setRoomState(null);
+    setGameReadyData(null);
+    setGameOverData(null);
+    pendingGameOverRef.current = null;
+    isSoloRef.current = false;
+    soundManager.stopBGM();
+    soundManager.playBGM('lobby');
+    setScreen('lobby');
   }, []);
 
   // ソロかどうかを判定（GamePageに渡す）
@@ -121,9 +140,10 @@ export default function App() {
           isSolo={isSolo}
           gameOverData={gameOverData}
           goToResult={goToResult}
+          quitGame={quitGame}
         />
       );
     case 'result':
-      return <ResultPage gameOverData={gameOverData} goToLobby={goToLobby} />;
+      return <ResultPage gameOverData={gameOverData} goToLobby={goToLobby} goToRoom={goToRoom} isSolo={isSolo} />;
   }
 }

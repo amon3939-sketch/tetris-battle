@@ -35,20 +35,17 @@ describe('board', () => {
     expect(result.board[19].every(cell => cell === 0)).toBe(true);
   });
 
-  it('おじゃまライン追加（穴が正しい列に空く）', () => {
+  it('おじゃまライン追加（各行にランダムな穴が1つ空く）', () => {
     const board = createEmptyBoard();
-    const holeColumn = 3;
-    const newBoard = addGarbage(board, 2, holeColumn);
+    const newBoard = addGarbage(board, 2);
     expect(newBoard.length).toBe(20);
-    // 最下2行がガーベージ
-    for (let c = 0; c < 10; c++) {
-      if (c === holeColumn) {
-        expect(newBoard[18][c]).toBe(0);
-        expect(newBoard[19][c]).toBe(0);
-      } else {
-        expect(newBoard[18][c]).toBe(8);
-        expect(newBoard[19][c]).toBe(8);
-      }
+    // 最下2行がガーベージ（各行に穴が1つ）
+    for (const rowIdx of [18, 19]) {
+      const row = newBoard[rowIdx];
+      const holes = row.filter(cell => cell === 0).length;
+      const filled = row.filter(cell => cell === 8).length;
+      expect(holes).toBe(1);
+      expect(filled).toBe(9);
     }
   });
 });

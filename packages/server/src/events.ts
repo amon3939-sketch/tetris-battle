@@ -9,6 +9,18 @@ function sanitize(text: string): string {
   return text.replace(/<[^>]*>/g, '').slice(0, 140);
 }
 
+function emitRoomState(io: Server, room: ReturnType<RoomManager['getRoom']>) {
+  if (!room) return;
+  io.to(room.id).emit('room:state', {
+    room: { id: room.id, name: room.name },
+    players: room.players,
+    hostSocketId: room.hostSocketId,
+    maxPlayers: room.maxPlayers,
+    hasPassword: !!room.password,
+    status: room.status,
+  });
+}
+
 export function registerEvents(io: Server, roomManager: RoomManager, db: Database): void {
   io.on('connection', (socket: Socket) => {
     console.log(`Connected: ${socket.id}`);
@@ -25,15 +37,7 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       const nickname = socket.data.nickname ?? 'Guest';
       const room = roomManager.createRoom(socket.id, nickname, name, maxPlayers, password);
       socket.join(room.id);
-      socket.emit('room:state', {
-        room: {
-          id: room.id,
-          name: room.name,
-        },
-        players: room.players,
-        hostSocketId: room.hostSocketId,
-        status: room.status,
-      });
+      emitRoomState(io, room);
       io.emit('room:list', roomManager.getRoomList());
     });
 
@@ -47,37 +51,19 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       }
       const room = result.room!;
       socket.join(room.id);
-      io.to(room.id).emit('room:state', {
-        room: {
-          id: room.id,
-          name: room.name,
-        },
-        players: room.players,
-        hostSocketId: room.hostSocketId,
-        status: room.status,
-      });
+      emitRoomState(io, room);
       io.emit('room:list', roomManager.getRoomList());
     });
 
     // ルーム退出
     socket.on('room:leave', () => {
       const { room, wasHost } = roomManager.leaveRoom(socket.id);
-      // socketId が参加している全roomから離脱
       const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
       for (const r of rooms) {
         socket.leave(r);
       }
-
       if (room) {
-        io.to(room.id).emit('room:state', {
-          room: {
-            id: room.id,
-            name: room.name,
-          },
-          players: room.players,
-          hostSocketId: room.hostSocketId,
-          status: room.status,
-        });
+        emitRoomState(io, room);
       }
       io.emit('room:list', roomManager.getRoomList());
     });
@@ -97,22 +83,42 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       }
     });
 
+    // ルーム設定変更（ホストのみ）
+    socket.on('room:update', ({ maxPlayers, password }: { maxPlayers?: number; password?: string | null }) => {
+      const room = roomManager.getRoomBySocketId(socket.id);
+      if (!room) return;
+      if (room.hostSocketId !== socket.id) return;
+      if (maxPlayers != null) {
+        room.maxPlayers = Math.max(1, Math.min(8, maxPlayers));
+      }
+      if (password !== undefined) {
+        room.password = password || undefined;
+      }
+      emitRoomState(io, room);
+      io.emit('room:list', roomManager.getRoomList());
+    });
+
+    // ゲーム終了後にルームへ戻る（waitingに戻す）
+    socket.on('game:backToRoom', () => {
+      const room = roomManager.getRoomBySocketId(socket.id);
+      if (!room) return;
+      // ゲームが終了している場合のみ
+      if (room.status === 'playing' && room.gameRoom) {
+        room.gameRoom.stop();
+        room.gameRoom = undefined;
+      }
+      room.status = 'waiting';
+      emitRoomState(io, room);
+      io.emit('room:list', roomManager.getRoomList());
+    });
+
     // ソロプレイ（1人用）
     socket.on('game:solo', () => {
       const nickname = socket.data.nickname ?? 'Guest';
-      // ソロ用の一時ルームを作成
       const room = roomManager.createRoom(socket.id, nickname, `${nickname}のソロ`, 1);
       socket.join(room.id);
+      emitRoomState(io, room);
 
-      // ルーム状態を送信
-      socket.emit('room:state', {
-        room: { id: room.id, name: room.name },
-        players: room.players,
-        hostSocketId: room.hostSocketId,
-        status: room.status,
-      });
-
-      // 即座にゲーム開始
       room.status = 'playing';
       const gameRoom = new ServerGameRoom(room.players, io, room.id, db);
       room.gameRoom = gameRoom;
@@ -142,7 +148,6 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       const gameRoom = new ServerGameRoom(room.players, io, room.id, db);
       room.gameRoom = gameRoom;
 
-      // fingerprint を gameRoom に設定
       for (const player of room.players) {
         const playerSocket = io.sockets.sockets.get(player.socketId);
         if (playerSocket?.data.fingerprint) {
@@ -179,15 +184,7 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       console.log(`Disconnected: ${socket.id}`);
       const { room } = roomManager.leaveRoom(socket.id);
       if (room) {
-        io.to(room.id).emit('room:state', {
-          room: {
-            id: room.id,
-            name: room.name,
-          },
-          players: room.players,
-          hostSocketId: room.hostSocketId,
-          status: room.status,
-        });
+        emitRoomState(io, room);
       }
       io.emit('room:list', roomManager.getRoomList());
     });

@@ -35,6 +35,7 @@ export interface LineClearResult {
   combo: number; // 連続ライン消去数（0始まり）
   isPerfectClear: boolean;
   attackLines: number; // 相手に送るおじゃまライン数
+  clearedRows: number[]; // 消去された行番号（ピース固定時点のboard上の位置）
 }
 
 export interface GameState {

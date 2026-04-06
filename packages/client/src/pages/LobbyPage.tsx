@@ -36,10 +36,19 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
 
   // 接続 + ニックネーム設定
   useEffect(() => {
-    // サウンドのプリロード + ロビーBGM
-    soundManager.load().then(() => {
+    // サウンドのプリロード
+    soundManager.load();
+
+    // ブラウザの自動再生ポリシー対策: ユーザー操作で初回BGM再生
+    const startBGMOnInteraction = () => {
       soundManager.playBGM('lobby');
-    });
+      document.removeEventListener('click', startBGMOnInteraction);
+      document.removeEventListener('keydown', startBGMOnInteraction);
+    };
+    // まず試みる（ブラウザが許可していれば鳴る）
+    soundManager.playBGM('lobby');
+    document.addEventListener('click', startBGMOnInteraction);
+    document.addEventListener('keydown', startBGMOnInteraction);
 
     const onConnect = () => {
       setConnected(true);
@@ -75,6 +84,8 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
       socket.off('room:list', onRoomList);
       socket.off('room:error', onRoomError);
       socket.off('ranking:data', onRanking);
+      document.removeEventListener('click', startBGMOnInteraction);
+      document.removeEventListener('keydown', startBGMOnInteraction);
     };
   }, []);
 

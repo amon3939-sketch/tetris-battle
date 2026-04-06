@@ -10,10 +10,11 @@ interface GameOverData {
 interface Props {
   gameOverData: GameOverData | null;
   goToLobby: () => void;
+  goToRoom: () => void;
+  isSolo: boolean;
 }
 
-export default function ResultPage({ gameOverData, goToLobby }: Props) {
-  // リザルトBGM再生
+export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }: Props) {
   useEffect(() => {
     soundManager.playBGM('result');
     return () => {
@@ -73,8 +74,13 @@ export default function ResultPage({ gameOverData, goToLobby }: Props) {
         </table>
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: 20 }}>
-        <button className="btn-primary" onClick={goToLobby} style={{ padding: '12px 32px', fontSize: 16 }}>
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
+        {!isSolo && (
+          <button className="btn-primary" onClick={goToRoom} style={{ padding: '12px 28px', fontSize: 16 }}>
+            ルームに戻る
+          </button>
+        )}
+        <button className="btn-secondary" onClick={goToLobby} style={{ padding: '12px 28px', fontSize: 16 }}>
           ロビーへ戻る
         </button>
       </div>

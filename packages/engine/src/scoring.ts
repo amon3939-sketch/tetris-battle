@@ -15,6 +15,7 @@ export function calculateLineClear(
   combo: number,
   b2bActive: boolean,
   isPerfectClear: boolean,
+  clearedRows: number[] = [],
 ): LineClearResult {
   if (linesCleared === 0 && tSpin === 'none') {
     return {
@@ -24,6 +25,7 @@ export function calculateLineClear(
       combo: -1,
       isPerfectClear: false,
       attackLines: 0,
+      clearedRows: [],
     };
   }
 
@@ -125,5 +127,6 @@ export function calculateLineClear(
     combo: newCombo,
     isPerfectClear: isPerfectClear && linesCleared > 0,
     attackLines,
+    clearedRows,
   };
 }
