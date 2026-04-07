@@ -59,8 +59,8 @@ export class GameEngine {
   private lastKickUsed = -1;
   private lastActionWasRotation = false;
 
-  // Pending garbage
-  private pendingGarbage: { lines: number }[] = [];
+  // Pending garbage (holes: サーバーが指定した穴位置。未指定ならランダム)
+  private pendingGarbage: { lines: number; holes?: number[] }[] = [];
 
   // Pause state
   private paused = false;
@@ -182,7 +182,7 @@ export class GameEngine {
     // おじゃま処理（ボード上部のブロックが押し出されても即ゲームオーバーにはしない。
     // 次のピースがスポーンできない場合にのみゲームオーバーとなる）
     for (const garbage of this.pendingGarbage) {
-      const garbageResult = addGarbage(this.board, garbage.lines);
+      const garbageResult = addGarbage(this.board, garbage.lines, garbage.holes);
       this.board = garbageResult.board;
     }
     this.pendingGarbage = [];
@@ -384,7 +384,7 @@ export class GameEngine {
     return this.getGhostPieceInternal();
   }
 
-  receiveGarbage(lines: number): void {
-    this.pendingGarbage.push({ lines });
+  receiveGarbage(lines: number, holes?: number[]): void {
+    this.pendingGarbage.push({ lines, holes });
   }
 }

@@ -37,16 +37,26 @@ describe('board', () => {
 
   it('おじゃまライン追加（各行にランダムな穴が1つ空く）', () => {
     const board = createEmptyBoard();
-    const { board: newBoard, overflow } = addGarbage(board, 2);
+    const { board: newBoard, holes } = addGarbage(board, 2);
     expect(newBoard.length).toBe(20);
-    expect(overflow).toBe(false);
+    expect(holes.length).toBe(2);
     // 最下2行がガーベージ（各行に穴が1つ）
     for (const rowIdx of [18, 19]) {
       const row = newBoard[rowIdx];
-      const holes = row.filter(cell => cell === 0).length;
+      const holeCount = row.filter(cell => cell === 0).length;
       const filled = row.filter(cell => cell === 8).length;
-      expect(holes).toBe(1);
+      expect(holeCount).toBe(1);
       expect(filled).toBe(9);
     }
+  });
+
+  it('おじゃまライン追加（穴位置を指定）', () => {
+    const board = createEmptyBoard();
+    const { board: newBoard, holes } = addGarbage(board, 2, [3, 7]);
+    expect(holes).toEqual([3, 7]);
+    expect(newBoard[18][3]).toBe(0);
+    expect(newBoard[19][7]).toBe(0);
+    expect(newBoard[18][0]).toBe(8);
+    expect(newBoard[19][0]).toBe(8);
   });
 });

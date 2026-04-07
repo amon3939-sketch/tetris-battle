@@ -233,12 +233,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       });
     };
 
-    const onAttackReceive = (data: { lines: number }) => {
+    const onAttackReceive = (data: { lines: number; holes?: number[] }) => {
       setIncomingAttack(prev => prev + data.lines);
       soundManager.playSE('garbage');
-      // ローカルエンジンにもおじゃまを反映
+      // ローカルエンジンにもおじゃまを反映（サーバーの穴位置を使って同期）
       if (localEngineRef.current) {
-        localEngineRef.current.receiveGarbage(data.lines);
+        localEngineRef.current.receiveGarbage(data.lines, data.holes);
       }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);

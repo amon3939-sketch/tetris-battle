@@ -151,11 +151,12 @@ export class ServerGameRoom {
       type: result.tSpin !== 'none' ? 'tspin' : result.linesCleared === 4 ? 'tetris' : 'normal',
     });
 
-    // ターゲットにおじゃまを送る
+    // ターゲットにおじゃまを送る（穴位置をサーバーで生成し、クライアントと同期）
     const targetEngine = this.engines.get(targetId);
     if (targetEngine) {
-      targetEngine.receiveGarbage(lines);
-      this.io.to(targetId).emit('attack:receive', { lines });
+      const holes = Array.from({ length: lines }, () => Math.floor(Math.random() * 10));
+      targetEngine.receiveGarbage(lines, holes);
+      this.io.to(targetId).emit('attack:receive', { lines, holes });
     }
   }
 
