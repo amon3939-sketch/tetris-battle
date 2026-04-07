@@ -163,7 +163,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           setGameActive(true);
           soundManager.playBGM('play');
 
-          // ローカルエンジンのtick（SEとエフェクト発火のみ、ボード表示はサーバー状態を使う）
+          // ローカルエンジンのtick（重力・ロック・SE・エフェクト＋即時ボード表示更新）
           if (localEngineRef.current) {
             localTickRef.current = setInterval(() => {
               const engine = localEngineRef.current;
@@ -176,7 +176,16 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                   canvasRef.current.triggerLineClear(result.clearedRows);
                 }
               }
-              // ボード状態の更新はサーバーのstate_ackに任せる（ここでsetLocalStateしない）
+              // ローカルエンジンのボード状態で即時表示更新
+              const state = engine.getState();
+              setLocalState(prev => prev ? {
+                ...state,
+                // スコア/ライン/レベルはサーバーの権威的データを維持
+                score: prev.score,
+                linesCleared: prev.linesCleared,
+                level: prev.level,
+                isGameOver: prev.isGameOver || state.isGameOver,
+              } : state);
             }, 16);
           }
         }, 500);
@@ -201,21 +210,37 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       serverScoreRef.current = data.score ?? 0;
       serverLinesRef.current = data.linesCleared ?? 0;
 
-      // 常にサーバーの権威的ボード状態で表示を更新
-      // ローカルエンジンは即時入力フィードバック（SE/エフェクト）のみ担当
-      setLocalState({
-        board: data.board,
-        currentPiece: data.currentPiece,
-        holdPiece: data.holdPiece,
-        holdUsed: data.holdUsed,
-        nextQueue: data.nextQueue,
-        isGameOver: data.isGameOver,
-        combo: data.combo,
-        b2bActive: data.b2bActive,
-        score: data.score,
-        linesCleared: data.linesCleared,
-        level: data.level,
-      });
+      if (localEngineRef.current) {
+        // ローカルエンジンがある場合：ボード表示はローカル（即時反映）、
+        // スコア/ライン/ゲームオーバーはサーバーを権威的に使う
+        setLocalState(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            score: data.score,
+            linesCleared: data.linesCleared,
+            level: data.level,
+            combo: data.combo,
+            b2bActive: data.b2bActive,
+            isGameOver: prev.isGameOver || data.isGameOver,
+          };
+        });
+      } else {
+        // ローカルエンジンなし：サーバー状態をそのまま使う
+        setLocalState({
+          board: data.board,
+          currentPiece: data.currentPiece,
+          holdPiece: data.holdPiece,
+          holdUsed: data.holdUsed,
+          nextQueue: data.nextQueue,
+          isGameOver: data.isGameOver,
+          combo: data.combo,
+          b2bActive: data.b2bActive,
+          score: data.score,
+          linesCleared: data.linesCleared,
+          level: data.level,
+        });
+      }
     };
 
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
