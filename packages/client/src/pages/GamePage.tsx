@@ -283,10 +283,14 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
   }, []);
 
+  // ゲーム終了判定: ローカルエンジンのgameOver OR サーバーからgame:over受信
+  const isGameOver = !!localState?.isGameOver || !!gameOverData;
+  // 対戦で勝者かどうか
+  const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
+
   // ゲームオーバー検知 → SE即時再生 + BGMフェードアウト
-  const gameOverDetected = !!localState?.isGameOver || !!gameOverData;
   useEffect(() => {
-    if (gameOverDetected && !gameOverFiredRef.current) {
+    if (isGameOver && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       soundManager.playSE('gameover');
       soundManager.fadeOutBGM(1200);
@@ -295,7 +299,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         localEngineRef.current.pause();
       }
     }
-  }, [gameOverDetected]);
+  }, [isGameOver]);
 
   // Send action + ローカル即時反映 + SE + エフェクト
   const sendAction = useCallback((action: Action) => {
@@ -470,11 +474,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   useInputHandler(gameActive && !isGameOver && !paused && !showMenu, settings, sendAction, keyMap);
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
-
-  // 対戦で勝者かどうか
-  const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
-  // ゲーム終了判定: ローカルエンジンのgameOver OR サーバーからgame:over受信
-  const isGameOver = !!localState?.isGameOver || !!gameOverData;
 
   return (
     <div style={{
