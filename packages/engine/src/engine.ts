@@ -387,4 +387,37 @@ export class GameEngine {
   receiveGarbage(lines: number, holes?: number[]): void {
     this.pendingGarbage.push({ lines, holes });
   }
+
+  /**
+   * サーバーの権威的ボード状態でローカルエンジンを同期する。
+   * ボード（確定済みブロック）とホールド/ネクストを同期し、
+   * 操作中ピースのみローカルを維持（即時レスポンス）。
+   */
+  syncFromServer(serverState: {
+    board: Board;
+    holdPiece: PieceType | null;
+    holdUsed: boolean;
+    nextQueue: PieceType[];
+    isGameOver: boolean;
+    currentPiece: Piece | null;
+  }): void {
+    // ボード（確定ブロック）を同期
+    this.board = serverState.board.map(row => [...row]) as Board;
+    // ホールド/ネクスト同期
+    this.holdPiece = serverState.holdPiece;
+    this.holdUsed = serverState.holdUsed;
+    // ゲームオーバー同期
+    if (serverState.isGameOver) {
+      this.isGameOver = true;
+    }
+    // 操作中ピースが大きくズレている場合はサーバーに合わせる
+    // （ピースタイプが違う＝別のピースになっている場合）
+    if (serverState.currentPiece && this.currentPiece) {
+      if (serverState.currentPiece.type !== this.currentPiece.type) {
+        this.currentPiece = { ...serverState.currentPiece };
+      }
+    } else if (serverState.currentPiece && !this.currentPiece) {
+      this.currentPiece = { ...serverState.currentPiece };
+    }
+  }
 }

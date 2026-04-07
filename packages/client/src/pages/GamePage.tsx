@@ -211,19 +211,27 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       serverLinesRef.current = data.linesCleared ?? 0;
 
       if (localEngineRef.current) {
-        // ローカルエンジンがある場合：ボード表示はローカル（即時反映）、
-        // スコア/ライン/ゲームオーバーはサーバーを権威的に使う
-        setLocalState(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            score: data.score,
-            linesCleared: data.linesCleared,
-            level: data.level,
-            combo: data.combo,
-            b2bActive: data.b2bActive,
-            isGameOver: prev.isGameOver || data.isGameOver,
-          };
+        // ローカルエンジンのボード/ホールド/ネクストをサーバー状態に同期
+        // （重力タイミングのズレによるボード乖離を防止）
+        // 操作中ピースはローカルを維持（即時レスポンス）
+        localEngineRef.current.syncFromServer({
+          board: data.board,
+          holdPiece: data.holdPiece,
+          holdUsed: data.holdUsed,
+          nextQueue: data.nextQueue,
+          isGameOver: data.isGameOver,
+          currentPiece: data.currentPiece,
+        });
+        // 同期後のローカルエンジン状態 + サーバーのスコア/ラインで表示更新
+        const synced = localEngineRef.current.getState();
+        setLocalState({
+          ...synced,
+          score: data.score,
+          linesCleared: data.linesCleared,
+          level: data.level,
+          combo: data.combo,
+          b2bActive: data.b2bActive,
+          isGameOver: synced.isGameOver || data.isGameOver,
         });
       } else {
         // ローカルエンジンなし：サーバー状態をそのまま使う
