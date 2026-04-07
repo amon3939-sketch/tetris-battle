@@ -163,20 +163,20 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           setGameActive(true);
           soundManager.playBGM('play');
 
-          // ローカルの重力tickを開始
+          // ローカルエンジンのtick（SEとエフェクト発火のみ、ボード表示はサーバー状態を使う）
           if (localEngineRef.current) {
             localTickRef.current = setInterval(() => {
               const engine = localEngineRef.current;
               if (!engine) return;
               const result = engine.tick(16);
-              // 重力やロックによるライン消去
+              // 重力やロックによるライン消去SE＋エフェクト
               if (result && result.linesCleared > 0) {
                 soundManager.playLineClear(result.linesCleared);
                 if (canvasRef.current) {
                   canvasRef.current.triggerLineClear(result.clearedRows);
                 }
               }
-              setLocalState(engine.getState());
+              // ボード状態の更新はサーバーのstate_ackに任せる（ここでsetLocalStateしない）
             }, 16);
           }
         }, 500);
@@ -201,27 +201,21 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       serverScoreRef.current = data.score ?? 0;
       serverLinesRef.current = data.linesCleared ?? 0;
 
-      // ゲームオーバーはサーバーの判定を信頼
-      if (data.isGameOver && localEngineRef.current) {
-        setLocalState(prev => prev ? { ...prev, isGameOver: true, score: data.score, linesCleared: data.linesCleared } : prev);
-      }
-
-      // ローカルエンジンがない場合（seed未対応のフォールバック）
-      if (!localEngineRef.current) {
-        setLocalState({
-          board: data.board,
-          currentPiece: data.currentPiece,
-          holdPiece: data.holdPiece,
-          holdUsed: data.holdUsed,
-          nextQueue: data.nextQueue,
-          isGameOver: data.isGameOver,
-          combo: data.combo,
-          b2bActive: data.b2bActive,
-          score: data.score,
-          linesCleared: data.linesCleared,
-          level: data.level,
-        });
-      }
+      // 常にサーバーの権威的ボード状態で表示を更新
+      // ローカルエンジンは即時入力フィードバック（SE/エフェクト）のみ担当
+      setLocalState({
+        board: data.board,
+        currentPiece: data.currentPiece,
+        holdPiece: data.holdPiece,
+        holdUsed: data.holdUsed,
+        nextQueue: data.nextQueue,
+        isGameOver: data.isGameOver,
+        combo: data.combo,
+        b2bActive: data.b2bActive,
+        score: data.score,
+        linesCleared: data.linesCleared,
+        level: data.level,
+      });
     };
 
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
