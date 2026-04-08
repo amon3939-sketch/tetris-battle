@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socket } from '../socket.ts';
-import type { Board, Piece, PieceType, Action, GameState } from '@tetris/engine/src/types.ts';
-import { GameEngine } from '@tetris/engine/src/engine.ts';
-import { PIECE_SHAPES, PIECE_GRID_SIZE, PIECE_CELL } from '@tetris/engine/src/piece.ts';
+import type { Board, Piece, Action, GameState } from '@tetris/engine/src/types.ts';
+import { PIECE_SHAPES, PIECE_GRID_SIZE } from '@tetris/engine/src/piece.ts';
 import GameCanvas from '../components/GameCanvas.tsx';
 import type { GameCanvasHandle } from '../components/GameCanvas.tsx';
 import HoldBox from '../components/HoldBox.tsx';
@@ -11,6 +10,7 @@ import MiniBoard from '../components/MiniBoard.tsx';
 import ChatBox from '../components/ChatBox.tsx';
 import { useInputHandler } from '../hooks/useInputHandler.ts';
 import { soundManager } from '../sounds.ts';
+import { PiecePredictor } from '../PiecePredictor.ts';
 
 interface RoomState {
   room: { id: string; name: string };
@@ -71,8 +71,15 @@ function getPieceCellsForRender(piece: Piece): [number, number][] {
   return cells.map(([r, c]) => [r + piece.y, c + piece.x]);
 }
 
+// 楽観的に移動可能なアクション（サーバー確認を待たず即時反映）
+const OPTIMISTIC_ACTIONS = new Set<Action>(['move_left', 'move_right', 'soft_drop', 'rotate_cw', 'rotate_ccw', 'rotate_180']);
+
 export default function GamePage({ roomState, gameReadyData, nickname, isSolo, gameOverData, goToResult, quitGame }: Props) {
-  const [localState, setLocalState] = useState<GameState | null>(null);
+  // サーバーから受信したゲーム状態（権威的データ）
+  const [serverState, setServerState] = useState<GameState | null>(null);
+  // 楽観的なピース位置（PiecePredictorから）
+  const [optimisticPiece, setOptimisticPiece] = useState<Piece | null>(null);
+
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
   const [incomingAttack, setIncomingAttack] = useState(0);
@@ -81,7 +88,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const seqRef = useRef(0);
   const attackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<GameCanvasHandle>(null);
-  const prevPieceRef = useRef<Piece | null>(null);
 
   const settings = gameReadyData?.settings ?? { das: 200, arr: 50 };
   const [muted, setMuted] = useState(false);
@@ -100,18 +106,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     { id: 'wwww', text: 'ｗｗｗｗ', style: 'pop' },
   ];
 
-  // ローカルエンジン（クライアント側予測用）
-  const localEngineRef = useRef<GameEngine | null>(null);
-  const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // サーバーから受信した権威的データ（Refで管理してレンダリングを抑制）
-  const serverScoreRef = useRef(0);
-  const serverLinesRef = useRef(0);
-  const serverLevelRef = useRef(1);
-  const serverComboRef = useRef(-1);
-  const serverB2bRef = useRef(false);
-  const serverGameOverRef = useRef(false);
+  // ピース位置予測（ローカルGameEngineの代わり）
+  const predictorRef = useRef<PiecePredictor>(new PiecePredictor());
+  // 前回のピースタイプ（新ピーススポーン検出用）
+  const lastPieceTypeRef = useRef<string | null>(null);
 
-  // ポーズ（ソロのみ）
+  // ポーズ（ソロのみ・サーバーに送信）
   const [paused, setPaused] = useState(false);
   // メニュー
   const [showMenu, setShowMenu] = useState(false);
@@ -135,16 +135,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     soundManager.load();
   }, []);
 
-  // Countdown + ローカルエンジン初期化
+  // ゲーム終了判定
+  const isGameOver = !!serverState?.isGameOver || !!gameOverData;
+  const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
+
+  // Countdown
   useEffect(() => {
     if (!gameReadyData) return;
-
-    // seedがあればローカルエンジンを作成
-    if (gameReadyData.seed != null && !localEngineRef.current) {
-      localEngineRef.current = new GameEngine({ seed: gameReadyData.seed });
-      const state = localEngineRef.current.getState();
-      setLocalState(state);
-    }
 
     let countdownSEPlayed = false;
     const updateCountdown = () => {
@@ -156,7 +153,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       else {
         setCountdown('GO!');
       }
-      // カウントダウンSEを「3」表示のタイミングで再生開始
       if (diff <= 3000 && !countdownSEPlayed) {
         countdownSEPlayed = true;
         soundManager.playSE('countdown');
@@ -166,34 +162,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           setCountdown(null);
           setGameActive(true);
           soundManager.playBGM('play');
-
-          // ローカルエンジンのtick（重力・ロック・SE・エフェクト＋即時ボード表示更新）
-          if (localEngineRef.current) {
-            localTickRef.current = setInterval(() => {
-              const engine = localEngineRef.current;
-              if (!engine) return;
-              const result = engine.tick(16);
-              // 重力やロックによるライン消去SE＋エフェクト
-              if (result && result.linesCleared > 0) {
-                soundManager.playLineClear(result.linesCleared);
-                if (canvasRef.current) {
-                  canvasRef.current.triggerLineClear(result.clearedRows);
-                }
-              }
-              // ローカルエンジンのボード状態で即時表示更新
-              const state = engine.getState();
-              setLocalState({
-                ...state,
-                // スコア/ライン/レベルはサーバーの権威的データを使用
-                score: serverScoreRef.current,
-                linesCleared: serverLinesRef.current,
-                level: serverLevelRef.current,
-                combo: serverComboRef.current,
-                b2bActive: serverB2bRef.current,
-                isGameOver: state.isGameOver || serverGameOverRef.current,
-              });
-            }, 16);
-          }
         }, 500);
         return;
       }
@@ -202,53 +170,49 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     requestAnimationFrame(updateCountdown);
     return () => {
       soundManager.stopBGM();
-      if (localTickRef.current) {
-        clearInterval(localTickRef.current);
-        localTickRef.current = null;
-      }
     };
   }, [gameReadyData]);
 
   // Socket events（サーバーからの権威的データ受信）
   useEffect(() => {
     const onStateAck = (data: any) => {
-      // サーバーの権威的データをRefに保存（レンダリングを発生させない）
-      serverScoreRef.current = data.score ?? 0;
-      serverLinesRef.current = data.linesCleared ?? 0;
-      serverLevelRef.current = data.level ?? 1;
-      serverComboRef.current = data.combo ?? -1;
-      serverB2bRef.current = data.b2bActive ?? false;
-      if (data.isGameOver) serverGameOverRef.current = true;
+      const newState: GameState = {
+        board: data.board,
+        currentPiece: data.currentPiece,
+        holdPiece: data.holdPiece,
+        holdUsed: data.holdUsed,
+        nextQueue: data.nextQueue,
+        isGameOver: data.isGameOver,
+        combo: data.combo,
+        b2bActive: data.b2bActive,
+        score: data.score,
+        linesCleared: data.linesCleared,
+        level: data.level,
+      };
 
-      if (localEngineRef.current) {
-        // ローカルエンジンのボード/ホールド/ネクストをサーバー状態に同期
-        // （重力タイミングのズレによるボード乖離を防止）
-        // 操作中ピースはローカルを維持（即時レスポンス）
-        // 表示更新はローカルtick（16ms）に任せる → setLocalStateは呼ばない
-        localEngineRef.current.syncFromServer({
-          board: data.board,
-          holdPiece: data.holdPiece,
-          holdUsed: data.holdUsed,
-          nextQueue: data.nextQueue,
-          isGameOver: data.isGameOver,
-          currentPiece: data.currentPiece,
-        });
+      // 新しいピースがスポーンされたか検出
+      const prevType = lastPieceTypeRef.current;
+      const currPiece = data.currentPiece;
+      const newPieceSpawned = currPiece && (
+        !prevType ||
+        currPiece.type !== prevType ||
+        (currPiece.y <= 0 && currPiece.x === 3) // スポーン位置
+      );
+
+      if (newPieceSpawned) {
+        // 新ピーススポーン → predictorリセット
+        predictorRef.current.resetPiece(currPiece);
       } else {
-        // ローカルエンジンなし：サーバー状態をそのまま使う
-        setLocalState({
-          board: data.board,
-          currentPiece: data.currentPiece,
-          holdPiece: data.holdPiece,
-          holdUsed: data.holdUsed,
-          nextQueue: data.nextQueue,
-          isGameOver: data.isGameOver,
-          combo: data.combo,
-          b2bActive: data.b2bActive,
-          score: data.score,
-          linesCleared: data.linesCleared,
-          level: data.level,
-        });
+        // 既存ピースの移動 → predictor同期（未確認アクションを再適用）
+        predictorRef.current.onServerState(data.board, currPiece, data.seq ?? -1);
       }
+      lastPieceTypeRef.current = currPiece?.type ?? null;
+
+      // 楽観ピース更新
+      setOptimisticPiece(predictorRef.current.getPiece());
+
+      // サーバー状態を表示に反映
+      setServerState(newState);
     };
 
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
@@ -263,10 +227,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     const onAttackReceive = (data: { lines: number; holes?: number[] }) => {
       setIncomingAttack(prev => prev + data.lines);
       soundManager.playSE('garbage');
-      // ローカルエンジンにもおじゃまを反映（サーバーの穴位置を使って同期）
-      if (localEngineRef.current) {
-        localEngineRef.current.receiveGarbage(data.lines, data.holes);
-      }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);
     };
@@ -275,9 +235,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       setKoList(prev => new Set(prev).add(data.socketId));
     };
 
-    // サーバーからのライン消去イベント（ローカルエンジンがない場合のフォールバック）
     const onLineClear = (data: { linesCleared: number; clearedRows?: number[] }) => {
-      if (localEngineRef.current) return; // ローカルエンジンが処理済み
       if (data.linesCleared > 0) {
         soundManager.playLineClear(data.linesCleared);
       }
@@ -288,7 +246,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
 
     const onStamp = (data: { text: string; style: string; nickname: string }) => {
-      if (data.nickname === nickname) return; // Don't show own stamps
+      if (data.nickname === nickname) return;
       setReceivedStamp(data);
       setTimeout(() => setReceivedStamp(null), 2000);
     };
@@ -310,106 +268,53 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
   }, []);
 
-  // ゲーム終了判定: ローカルエンジンのgameOver OR サーバーからgame:over受信
-  const isGameOver = !!localState?.isGameOver || !!gameOverData;
-  // 対戦で勝者かどうか
-  const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
-
   // ゲームオーバー検知 → SE即時再生 + BGMフェードアウト
   useEffect(() => {
     if (isGameOver && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       soundManager.playSE('gameover');
       soundManager.fadeOutBGM(1200);
-      // 勝者の場合もローカルエンジンを停止
-      if (localEngineRef.current) {
-        localEngineRef.current.pause();
-      }
     }
   }, [isGameOver]);
 
-  // Send action + ローカル即時反映 + SE + エフェクト
+  // Send action
   const sendAction = useCallback((action: Action) => {
     seqRef.current++;
-    // サーバーにも送信（攻撃処理・スコア記録等のため）
-    socket.emit('input:action', { action, seq: seqRef.current });
+    const seq = seqRef.current;
+    // サーバーに送信
+    socket.emit('input:action', { action, seq });
 
-    // アクション別SE
+    // アクション別SE（即時再生）
     if (action === 'hard_drop') soundManager.playSE('harddrop');
     else if (action === 'rotate_cw' || action === 'rotate_ccw') soundManager.playSE('rotate');
     else if (action === 'hold') soundManager.playSE('hold');
+    // move_left/move_right はSEなし
 
-    const engine = localEngineRef.current;
-    if (engine) {
-      // ハードドロップエフェクト（ローカルエンジンの現在ピースから計算）
-      const stateBefore = engine.getState();
-      if (action === 'hard_drop' && stateBefore.currentPiece && canvasRef.current) {
-        const piece = stateBefore.currentPiece;
-        let y = piece.y;
-        while (true) {
-          const nextY = y + 1;
-          const shape = PIECE_SHAPES[piece.type];
-          const gridSize = PIECE_GRID_SIZE[piece.type];
-          let cells = shape.map(([r, c]) => [r, c] as [number, number]);
-          for (let i = 0; i < piece.rotation; i++) {
-            cells = cells.map(([r, c]) => [c, gridSize - 1 - r]);
-          }
-          const boardCells = cells.map(([r, c]) => [r + nextY, c + piece.x] as [number, number]);
-          const collision = boardCells.some(([r, c]) => {
-            if (c < 0 || c >= 10 || r >= 20) return true;
-            if (r >= 0 && stateBefore.board[r][c] !== 0) return true;
-            return false;
-          });
-          if (collision) break;
-          y = nextY;
-        }
-        const finalCells = getPieceCellsForRender({ ...piece, y });
-        canvasRef.current.triggerHardDrop(finalCells);
+    // 楽観的ピース移動（move/rotate/soft_dropのみ）
+    if (OPTIMISTIC_ACTIONS.has(action)) {
+      predictorRef.current.applyOptimistic(action, seq);
+      setOptimisticPiece(predictorRef.current.getPiece());
+    }
+
+    // ハードドロップエフェクト
+    if (action === 'hard_drop' && canvasRef.current) {
+      const ghost = predictorRef.current.getGhostPiece();
+      if (ghost) {
+        canvasRef.current.triggerHardDrop(getPieceCellsForRender(ghost));
       }
-
-      // ローカルエンジンに即座に適用
-      const result = engine.applyAction(action);
-
-      // ライン消去SE＋エフェクト（ハードドロップによるライン消去）
-      if (result && result.linesCleared > 0) {
-        soundManager.playLineClear(result.linesCleared);
-        if (canvasRef.current) {
-          canvasRef.current.triggerLineClear(result.clearedRows);
-        }
-      }
-
-      // 即座にローカル状態を更新（遅延ゼロ）
-      const state = engine.getState();
-      setLocalState({
-        ...state,
-        score: serverScoreRef.current,
-        linesCleared: serverLinesRef.current,
-        level: serverLevelRef.current,
-        combo: serverComboRef.current,
-        b2bActive: serverB2bRef.current,
-        isGameOver: state.isGameOver || serverGameOverRef.current,
-      });
     }
   }, []);
 
-  // ポーズ切替
+  // ポーズ切替（ソロのみ）
   const togglePause = useCallback(() => {
     if (!isSolo || !gameActive || isGameOver) return;
-    const engine = localEngineRef.current;
-    if (!engine) return;
-    if (engine.isPaused()) {
-      engine.resume();
-      setPaused(false);
-    } else {
-      engine.pause();
-      setPaused(true);
-    }
+    setPaused(p => !p);
+    // TODO: サーバーにpause/resumeを送信
   }, [isSolo, gameActive, isGameOver]);
 
   // メニュー表示
   const openMenu = useCallback(() => {
-    if (isSolo && localEngineRef.current && gameActive && !isGameOver) {
-      localEngineRef.current.pause();
+    if (isSolo && gameActive && !isGameOver) {
       setPaused(true);
     }
     setShowMenu(true);
@@ -420,23 +325,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     setShowMenu(false);
     setShowOptions(false);
     setShowQuitConfirm(false);
-    if (isSolo && localEngineRef.current) {
-      localEngineRef.current.resume();
+    if (isSolo) {
       setPaused(false);
     }
   }, [isSolo]);
-
-  // Escキーでメニュー表示/非表示
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showMenu) closeMenu();
-        else if (gameActive && !isGameOver) openMenu();
-      }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [showMenu, gameActive, isGameOver, openMenu, closeMenu]);
 
   // キー割り当てリスナー
   useEffect(() => {
@@ -444,7 +336,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     const handler = (e: KeyboardEvent) => {
       e.preventDefault();
       if (e.key === 'Escape') { setRebindAction(null); return; }
-      // 既存のキーを削除してから新しいキーを設定
       const newMap = { ...keyMap };
       for (const [k, v] of Object.entries(newMap)) {
         if (v === rebindAction) delete newMap[k];
@@ -485,6 +376,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   useInputHandler(gameActive && !isGameOver && !paused && !showMenu, settings, sendAction, keyMap);
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
+
+  // 表示用: 楽観ピースがあればそれを使い、なければサーバーのピースを使う
+  const displayPiece = optimisticPiece ?? serverState?.currentPiece ?? null;
+  const displayBoard = serverState?.board ?? null;
 
   return (
     <div style={{
@@ -688,14 +583,14 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       {/* Left side: Hold + Score + Chat */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120 }}>
         <HoldBox
-          holdPiece={localState?.holdPiece ?? null}
-          holdUsed={localState?.holdUsed ?? false}
+          holdPiece={serverState?.holdPiece ?? null}
+          holdUsed={serverState?.holdUsed ?? false}
         />
         <div className="card" style={{ padding: 12, fontSize: 14 }}>
-          <div style={{ marginBottom: 4 }}>Score: <strong style={{ fontSize: 16 }}>{localState?.score ?? 0}</strong></div>
-          <div style={{ marginBottom: 4 }}>Lines: <strong style={{ fontSize: 16 }}>{localState?.linesCleared ?? 0}</strong></div>
-          <div>Combo: <strong>{Math.max(0, localState?.combo ?? 0)}</strong></div>
-          {localState?.b2bActive && (
+          <div style={{ marginBottom: 4 }}>Score: <strong style={{ fontSize: 16 }}>{serverState?.score ?? 0}</strong></div>
+          <div style={{ marginBottom: 4 }}>Lines: <strong style={{ fontSize: 16 }}>{serverState?.linesCleared ?? 0}</strong></div>
+          <div>Combo: <strong>{Math.max(0, serverState?.combo ?? 0)}</strong></div>
+          {serverState?.b2bActive && (
             <div style={{ color: '#f0a000', fontWeight: 700, marginTop: 4 }}>B2B</div>
           )}
         </div>
@@ -731,8 +626,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       <div style={{ position: 'relative' }}>
         <GameCanvas
           ref={canvasRef}
-          board={localState?.board ?? null}
-          currentPiece={localState?.currentPiece ?? null}
+          board={displayBoard}
+          currentPiece={displayPiece}
           incomingAttack={incomingAttack}
           isGameOver={isGameOver}
         />
@@ -782,7 +677,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           }}>
             NEXT
           </div>
-          <NextQueue nextQueue={localState?.nextQueue ?? []} />
+          <NextQueue nextQueue={serverState?.nextQueue ?? []} />
         </div>
 
         {/* Other players' mini boards */}

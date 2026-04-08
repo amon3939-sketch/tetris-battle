@@ -18,7 +18,6 @@ export class ServerGameRoom {
   private aliveIds: Set<string>;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private startTime = 0;
-  private stateUpdateCounter = 0;
   private isSolo: boolean;
 
   // 統計追跡
@@ -161,14 +160,11 @@ export class ServerGameRoom {
   }
 
   private tick(): void {
-    this.stateUpdateCounter++;
-    // 約3フレームに1回（~48ms間隔）状態を全員に送信
-    const shouldBroadcast = this.stateUpdateCounter % 3 === 0;
-
     for (const socketId of Array.from(this.aliveIds)) {
       const engine = this.engines.get(socketId);
       if (!engine) continue;
 
+      const stateBefore = engine.getState();
       const result = engine.tick(16);
 
       if (result && result.attackLines > 0) {
@@ -179,30 +175,29 @@ export class ServerGameRoom {
         this.tspinCount.set(socketId, (this.tspinCount.get(socketId) ?? 0) + 1);
       }
 
-      // ロック発生時 or ライン消去時にstate_ack + board:updateを即送信
-      if (result) {
-        const state = engine.getState();
-        this.io.to(socketId).emit('game:state_ack', { seq: -1, ...state });
+      const stateAfter = engine.getState();
+
+      // ピース位置が変わった（重力落下）またはロック発生時に送信
+      const pieceChanged =
+        stateBefore.currentPiece?.y !== stateAfter.currentPiece?.y ||
+        stateBefore.currentPiece?.type !== stateAfter.currentPiece?.type ||
+        stateBefore.currentPiece === null !== (stateAfter.currentPiece === null);
+
+      if (result || pieceChanged) {
+        this.io.to(socketId).emit('game:state_ack', { seq: -1, ...stateAfter });
         this.io.to(this.roomId).emit('board:update', {
           socketId,
-          board: state.board,
-          currentPiece: state.currentPiece,
-          score: state.score,
-          linesCleared: state.linesCleared,
+          board: stateAfter.board,
+          currentPiece: stateAfter.currentPiece,
+          score: stateAfter.score,
+          linesCleared: stateAfter.linesCleared,
         });
-        if (result.linesCleared > 0) {
+        if (result && result.linesCleared > 0) {
           this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared, clearedRows: result.clearedRows });
         }
       }
 
-      // 定期的に状態を送信（gravity落下の反映）
-      if (shouldBroadcast && !result) {
-        const state = engine.getState();
-        this.io.to(socketId).emit('game:state_ack', { seq: -1, ...state });
-      }
-
-      const state = engine.getState();
-      if (state.isGameOver) {
+      if (stateAfter.isGameOver) {
         this.handleKO(socketId);
       }
     }
