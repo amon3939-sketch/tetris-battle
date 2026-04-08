@@ -3,7 +3,7 @@ services:
     name: tetris-battle
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --build-from-source && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
@@ -11,4 +11,4 @@ services:
       - key: CORS_ORIGIN
         value: "*"
       - key: DATABASE_PATH
-        value: "./tetris.db"
+        value: "/tmp/tetris.db"

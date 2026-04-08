@@ -10,6 +10,14 @@ import { initDatabase } from './db.js';
 import { RoomManager } from './room.js';
 import { registerEvents } from './events.js';
 
+// クラッシュ防止: 未処理エラーをキャッチしてログに出す
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
@@ -22,7 +30,13 @@ app.use(express.json());
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    nodeVersion: process.version,
+    port: PORT,
+  });
 });
 
 // クライアントのビルド済みファイルを配信（離れた場所からのプレイ対応）
@@ -55,8 +69,17 @@ const io = new Server(httpServer, {
   pingTimeout: 5000,
 });
 
-// DB
-const db = initDatabase(DATABASE_PATH);
+// DB（初期化失敗時もサーバーを落とさない）
+let db: ReturnType<typeof initDatabase>;
+try {
+  db = initDatabase(DATABASE_PATH);
+  console.log('Database initialized successfully');
+} catch (e) {
+  console.error('Database initialization failed:', e);
+  // ダミーDBを作成（インメモリ）
+  db = initDatabase(':memory:');
+  console.log('Falling back to in-memory database');
+}
 
 // Room Manager
 const roomManager = new RoomManager();
