@@ -103,9 +103,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   // ローカルエンジン（クライアント側予測用）
   const localEngineRef = useRef<GameEngine | null>(null);
   const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // サーバーから受信したスコア/ライン（権威的データ）
+  // サーバーから受信した権威的データ（Refで管理してレンダリングを抑制）
   const serverScoreRef = useRef(0);
   const serverLinesRef = useRef(0);
+  const serverLevelRef = useRef(1);
+  const serverComboRef = useRef(-1);
+  const serverB2bRef = useRef(false);
+  const serverGameOverRef = useRef(false);
 
   // ポーズ（ソロのみ）
   const [paused, setPaused] = useState(false);
@@ -178,14 +182,16 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
               }
               // ローカルエンジンのボード状態で即時表示更新
               const state = engine.getState();
-              setLocalState(prev => prev ? {
+              setLocalState({
                 ...state,
-                // スコア/ライン/レベルはサーバーの権威的データを維持
-                score: prev.score,
-                linesCleared: prev.linesCleared,
-                level: prev.level,
-                isGameOver: prev.isGameOver || state.isGameOver,
-              } : state);
+                // スコア/ライン/レベルはサーバーの権威的データを使用
+                score: serverScoreRef.current,
+                linesCleared: serverLinesRef.current,
+                level: serverLevelRef.current,
+                combo: serverComboRef.current,
+                b2bActive: serverB2bRef.current,
+                isGameOver: state.isGameOver || serverGameOverRef.current,
+              });
             }, 16);
           }
         }, 500);
@@ -206,14 +212,19 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   // Socket events（サーバーからの権威的データ受信）
   useEffect(() => {
     const onStateAck = (data: any) => {
-      // サーバーのスコア/ラインを権威的データとして保存
+      // サーバーの権威的データをRefに保存（レンダリングを発生させない）
       serverScoreRef.current = data.score ?? 0;
       serverLinesRef.current = data.linesCleared ?? 0;
+      serverLevelRef.current = data.level ?? 1;
+      serverComboRef.current = data.combo ?? -1;
+      serverB2bRef.current = data.b2bActive ?? false;
+      if (data.isGameOver) serverGameOverRef.current = true;
 
       if (localEngineRef.current) {
         // ローカルエンジンのボード/ホールド/ネクストをサーバー状態に同期
         // （重力タイミングのズレによるボード乖離を防止）
         // 操作中ピースはローカルを維持（即時レスポンス）
+        // 表示更新はローカルtick（16ms）に任せる → setLocalStateは呼ばない
         localEngineRef.current.syncFromServer({
           board: data.board,
           holdPiece: data.holdPiece,
@@ -221,17 +232,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           nextQueue: data.nextQueue,
           isGameOver: data.isGameOver,
           currentPiece: data.currentPiece,
-        });
-        // 同期後のローカルエンジン状態 + サーバーのスコア/ラインで表示更新
-        const synced = localEngineRef.current.getState();
-        setLocalState({
-          ...synced,
-          score: data.score,
-          linesCleared: data.linesCleared,
-          level: data.level,
-          combo: data.combo,
-          b2bActive: data.b2bActive,
-          isGameOver: synced.isGameOver || data.isGameOver,
         });
       } else {
         // ローカルエンジンなし：サーバー状態をそのまま使う
@@ -379,34 +379,18 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       }
 
       // 即座にローカル状態を更新（遅延ゼロ）
-      setLocalState(engine.getState());
-    } else {
-      // ローカルエンジンがない場合の旧フォールバック
-      if (action === 'hard_drop' && localState?.currentPiece && localState?.board && canvasRef.current) {
-        const piece = localState.currentPiece;
-        let y = piece.y;
-        while (true) {
-          const nextY = y + 1;
-          const shape = PIECE_SHAPES[piece.type];
-          const gridSize = PIECE_GRID_SIZE[piece.type];
-          let cells = shape.map(([r, c]) => [r, c] as [number, number]);
-          for (let i = 0; i < piece.rotation; i++) {
-            cells = cells.map(([r, c]) => [c, gridSize - 1 - r]);
-          }
-          const boardCells = cells.map(([r, c]) => [r + nextY, c + piece.x] as [number, number]);
-          const collision = boardCells.some(([r, c]) => {
-            if (c < 0 || c >= 10 || r >= 20) return true;
-            if (r >= 0 && localState.board[r][c] !== 0) return true;
-            return false;
-          });
-          if (collision) break;
-          y = nextY;
-        }
-        const finalCells = getPieceCellsForRender({ ...piece, y });
-        canvasRef.current.triggerHardDrop(finalCells);
-      }
+      const state = engine.getState();
+      setLocalState({
+        ...state,
+        score: serverScoreRef.current,
+        linesCleared: serverLinesRef.current,
+        level: serverLevelRef.current,
+        combo: serverComboRef.current,
+        b2bActive: serverB2bRef.current,
+        isGameOver: state.isGameOver || serverGameOverRef.current,
+      });
     }
-  }, [localState]);
+  }, []);
 
   // ポーズ切替
   const togglePause = useCallback(() => {
