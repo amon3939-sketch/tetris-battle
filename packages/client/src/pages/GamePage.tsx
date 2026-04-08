@@ -76,14 +76,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [localState, setLocalState] = useState<GameState | null>(null);
 
-  // ===== サーバーから受信した権威的データ（スコア・攻撃・勝敗判定用） =====
+  // ===== サーバーから受信した権威的データ（スコア・攻撃用） =====
   const serverScoreRef = useRef(0);
   const serverLinesRef = useRef(0);
   const serverLevelRef = useRef(1);
   const serverComboRef = useRef(-1);
   const serverB2bRef = useRef(false);
-  // サーバーが判定したゲームオーバー（勝敗に使用）
-  const serverGameOverRef = useRef(false);
 
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
@@ -128,8 +126,9 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   useEffect(() => { soundManager.load(); }, []);
 
-  // ゲーム終了判定：サーバーの判定 OR ローカルのgameOver OR game:overイベント
-  const isGameOver = serverGameOverRef.current || !!localState?.isGameOver || !!gameOverData;
+  // ゲーム終了判定：ローカルエンジンのgameOver OR game:overイベント（サーバーからの勝敗通知）
+  // ※ state_ackのisGameOverは使わない（サーバーエンジンとのタイミングズレで早すぎるゲームオーバーを防止）
+  const isGameOver = !!localState?.isGameOver || !!gameOverData;
   const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
 
   // ===== Countdown + ローカルエンジン初期化 =====
@@ -182,7 +181,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                 level: serverLevelRef.current,
                 combo: serverComboRef.current,
                 b2bActive: serverB2bRef.current,
-                isGameOver: state.isGameOver || serverGameOverRef.current,
+                isGameOver: state.isGameOver,
               });
             }, 16);
           }
@@ -210,8 +209,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       serverLevelRef.current = data.level ?? 1;
       serverComboRef.current = data.combo ?? -1;
       serverB2bRef.current = data.b2bActive ?? false;
-      if (data.isGameOver) serverGameOverRef.current = true;
       // 表示更新はローカルtickに任せる（setLocalState呼ばない）
+      // ※ isGameOverはローカルエンジンとgame:overイベントで判定（state_ackは使わない）
     };
 
     // 他プレイヤーのボード（ミニボード表示用のみ。勝敗判定に使わない）
@@ -311,7 +310,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         level: serverLevelRef.current,
         combo: serverComboRef.current,
         b2bActive: serverB2bRef.current,
-        isGameOver: state.isGameOver || serverGameOverRef.current,
+        isGameOver: state.isGameOver,
       });
     }
   }, []);

@@ -56,7 +56,7 @@ function drawTileCell(ctx: CanvasRenderingContext2D, x: number, y: number, size:
   ctx.fillRect(x + bevel, y + bevel, size - bevel * 2, size - bevel * 2);
 }
 
-const GHOST_ALPHA = 0.25;
+const GHOST_ALPHA = 0.4;
 
 function getPieceCellsForRender(piece: Piece): [number, number][] {
   const shape = PIECE_SHAPES[piece.type];
@@ -101,6 +101,7 @@ interface LineClearEffect {
   rows: number[];
   startTime: number;
   duration: number; // ms (フラッシュ + フェードアウト合計)
+  // 消去行のスナップショット（消去前のセル色情報）は不要 - 白フラッシュのみ使用
 }
 
 interface HardDropEffect {
@@ -189,17 +190,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         return;
       }
 
-      // ライン消去エフェクト中の行情報を収集
-      const clearingRows = new Map<number, { progress: number; startTime: number }>();
-      for (const eff of effectsRef.current.lineClears) {
-        const elapsed = now - eff.startTime;
-        const progress = Math.min(1, elapsed / eff.duration);
-        for (const row of eff.rows) {
-          clearingRows.set(row, { progress, startTime: eff.startTime });
-        }
-      }
-
-      // Draw board cells
+      // Draw board cells（ライン消去エフェクトとは独立して描画）
       for (let r = 0; r < 20; r++) {
         for (let c = 0; c < 10; c++) {
           const cell = board[r][c];
@@ -208,37 +199,31 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
             ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
           } else {
             const baseColor = CELL_COLORS[cell] || CELL_COLORS[0];
-            const clearInfo = clearingRows.get(r);
-            if (clearInfo) {
-              const p = clearInfo.progress;
-              // フェーズ1 (0~0.45): 白フラッシュ（行全体が白く光る）~270ms
-              // フェーズ2 (0.45~1.0): 右下→左上にフェードアウト
-              if (p < 0.45) {
-                // 白フラッシュ中はブロックを描いてから白オーバーレイ
-                drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, baseColor);
-                // 急速に白くなり、ピークを維持してからフェード
-                const t = p / 0.45;
-                const flashAlpha = t < 0.3 ? (t / 0.3) * 0.95 : 0.95 - (t - 0.3) * 0.5;
-                ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, flashAlpha)})`;
-                ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-              } else {
-                // 右下→左上フェードアウト
-                const fadeProgress = (p - 0.45) / 0.55; // 0~1
-                // セルの「消え度」を対角線に沿って計算 (右下=0, 左上=1 の正規化座標)
-                const cellDiag = (c / 9 + (1 - r / 19)) / 2; // 左上=1, 右下=0
-                const threshold = fadeProgress * 1.4; // 1.4で少しオーバーシュートさせて全セル消す
-                const cellAlpha = Math.max(0, 1 - Math.max(0, threshold - (1 - cellDiag)) * 4);
-                if (cellAlpha > 0.01) {
-                  ctx.globalAlpha = cellAlpha;
-                  drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, baseColor);
-                  // まだ白い残光
-                  ctx.fillStyle = `rgba(255, 255, 255, ${cellAlpha * 0.3})`;
-                  ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-                  ctx.globalAlpha = 1;
-                }
-              }
-            } else {
-              drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, baseColor);
+            drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, baseColor);
+          }
+        }
+      }
+
+      // ライン消去エフェクト（ボード描画の上にオーバーレイ）
+      for (const eff of effectsRef.current.lineClears) {
+        const elapsed = now - eff.startTime;
+        const p = Math.min(1, elapsed / eff.duration);
+        for (const row of eff.rows) {
+          if (row < 0 || row >= 20) continue;
+          const y = row * CELL_SIZE;
+          if (p < 0.4) {
+            // フェーズ1: 白フラッシュ（行全体が白く光る）
+            const t = p / 0.4;
+            const flashAlpha = t < 0.3 ? (t / 0.3) * 0.9 : 0.9 * (1 - (t - 0.3) / 0.7);
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, flashAlpha)})`;
+            ctx.fillRect(0, y, BOARD_WIDTH, CELL_SIZE);
+          } else {
+            // フェーズ2: フェードアウト
+            const fadeProgress = (p - 0.4) / 0.6;
+            const alpha = (1 - fadeProgress) * 0.5;
+            if (alpha > 0.01) {
+              ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+              ctx.fillRect(0, y, BOARD_WIDTH, CELL_SIZE);
             }
           }
         }
@@ -264,20 +249,29 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         gameOverStartRef.current = null;
       }
 
-      // Draw ghost piece
+      // Draw ghost piece (枠線 + 半透明塗り)
       if (currentPiece) {
         const ghostY = getGhostY(board, currentPiece);
         if (ghostY !== currentPiece.y) {
           const ghostCells = getPieceCellsForRender({ ...currentPiece, y: ghostY });
           const color = CELL_COLORS[PIECE_CELL[currentPiece.type]] || '#fff';
-          ctx.globalAlpha = GHOST_ALPHA;
           for (const [r, c] of ghostCells) {
             if (r >= 0 && r < 20 && c >= 0 && c < 10) {
+              const x = c * CELL_SIZE;
+              const y = r * CELL_SIZE;
+              // 半透明塗りつぶし
+              ctx.globalAlpha = GHOST_ALPHA;
               ctx.fillStyle = color;
-              ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+              ctx.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+              ctx.globalAlpha = 1;
+              // 枠線（視認性向上）
+              ctx.strokeStyle = color;
+              ctx.lineWidth = 2;
+              ctx.globalAlpha = 0.7;
+              ctx.strokeRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+              ctx.globalAlpha = 1;
             }
           }
-          ctx.globalAlpha = 1;
         }
 
         // Draw current piece
