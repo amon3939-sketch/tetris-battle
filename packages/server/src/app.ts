@@ -21,7 +21,6 @@ process.on('unhandledRejection', (reason) => {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 3001;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
-const DATABASE_PATH = process.env.DATABASE_PATH || './tetris.db';
 
 // Express
 const app = express();
@@ -69,17 +68,8 @@ const io = new Server(httpServer, {
   pingTimeout: 5000,
 });
 
-// DB（初期化失敗時もサーバーを落とさない）
-let db: ReturnType<typeof initDatabase>;
-try {
-  db = initDatabase(DATABASE_PATH);
-  console.log('Database initialized successfully');
-} catch (e) {
-  console.error('Database initialization failed:', e);
-  // ダミーDBを作成（インメモリ）
-  db = initDatabase(':memory:');
-  console.log('Falling back to in-memory database');
-}
+// DB（インメモリ実装 - ネイティブモジュール不要）
+const db = initDatabase();
 
 // Room Manager
 const roomManager = new RoomManager();
@@ -91,7 +81,7 @@ registerEvents(io, roomManager, db);
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Tetris server listening on port ${PORT}`);
   console.log(`CORS origin: ${CORS_ORIGIN}`);
-  console.log(`Database: ${DATABASE_PATH}`);
+  console.log('Database: in-memory');
   if (existsSync(clientDist)) {
     console.log(`Open http://localhost:${PORT} to play!`);
   }
