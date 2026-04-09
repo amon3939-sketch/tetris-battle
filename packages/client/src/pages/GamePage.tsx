@@ -85,6 +85,9 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   // ローカルボード→サーバー同期用カウンター
   const boardSyncCounterRef = useRef(0);
 
+  // 画面振動エフェクト
+  const [screenShake, setScreenShake] = useState(false);
+
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
   const [incomingAttack, setIncomingAttack] = useState(0);
@@ -273,15 +276,19 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
   }, []);
 
-  // ゲームオーバー検知
+  // ゲームオーバー検知 → サーバーに通知
   useEffect(() => {
     if (isGameOver && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       soundManager.playSE('gameover');
       soundManager.fadeOutBGM(1200);
       if (localEngineRef.current) localEngineRef.current.pause();
+      // ローカルエンジンがゲームオーバーを検出 → サーバーに通知
+      if (localState?.isGameOver) {
+        socket.emit('game:localGameOver');
+      }
     }
-  }, [isGameOver]);
+  }, [isGameOver, localState?.isGameOver]);
 
   // ===== Send action: ローカル即時反映 + サーバーに送信 =====
   const sendAction = useCallback((action: Action) => {
@@ -297,12 +304,15 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     // ローカルエンジンに即時反映
     const engine = localEngineRef.current;
     if (engine) {
-      // ハードドロップエフェクト
+      // ハードドロップエフェクト + 画面振動
       if (action === 'hard_drop' && canvasRef.current) {
         const ghost = engine.getGhostPiece();
         if (ghost) {
           canvasRef.current.triggerHardDrop(getPieceCellsForRender(ghost));
         }
+        // 画面振動
+        setScreenShake(true);
+        setTimeout(() => setScreenShake(false), 150);
       }
 
       const result = engine.applyAction(action);
@@ -541,7 +551,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       </div>
 
       {/* Center: Main board */}
-      <div style={{ position: 'relative' }}>
+      <div style={{
+        position: 'relative',
+        animation: screenShake ? 'screenShake 0.15s ease-out' : 'none',
+      }}>
         <GameCanvas
           ref={canvasRef}
           board={localState?.board ?? null}
@@ -583,9 +596,9 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         )}
       </div>
 
-      {/* Received stamp */}
+      {/* Received stamp（メインウインドウに被らないよう左上に配置） */}
       {receivedStamp && (
-        <div style={{ position: 'fixed', top: '30%', left: '50%', transform: 'translateX(-50%)', zIndex: 400, pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out' }}>
+        <div style={{ position: 'fixed', top: '20%', left: 40, zIndex: 400, pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out' }}>
           <div style={{ padding: '16px 32px', borderRadius: 16, background: receivedStamp.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(22,22,42,0.95)', border: '2px solid rgba(255,255,255,0.3)', textAlign: 'center' }}>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>{receivedStamp.nickname}</div>
             <div style={{ fontSize: receivedStamp.style === 'pop' ? 28 : 22, fontWeight: receivedStamp.style === 'pop' ? 900 : 400, color: '#fff', fontFamily: receivedStamp.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>

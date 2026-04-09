@@ -34,13 +34,13 @@ export const PIECE_GRID_SIZE: Record<PieceType, number> = {
   L: 3,
 };
 
-// スポーン位置
+// スポーン位置（ボード上端より2行上 → 積み上がりに余裕を持たせる）
 export function spawnPiece(type: PieceType): Piece {
   return {
     type,
     rotation: 0,
     x: 3,
-    y: -1,
+    y: -2,
   };
 }
 

@@ -82,13 +82,6 @@ export class ServerGameRoom {
         if (!engine) continue;
         const state = engine.getState();
         this.io.to(socketId).emit('game:state_ack', { seq: 0, ...state });
-        this.io.to(this.roomId).emit('board:update', {
-          socketId,
-          board: state.board,
-          currentPiece: state.currentPiece,
-          score: state.score,
-          linesCleared: state.linesCleared,
-        });
       }
 
       this.tickInterval = setInterval(() => this.tick(), 16);
@@ -111,28 +104,23 @@ export class ServerGameRoom {
       this.tspinCount.set(socketId, (this.tspinCount.get(socketId) ?? 0) + 1);
     }
 
-    // state_ack を送信者に返す
+    // state_ack を送信者に返す（スコア等の権威的データ）
     const state = engine.getState();
     this.io.to(socketId).emit('game:state_ack', { seq, ...state });
 
-    // board:update を全員にbroadcast
-    this.io.to(this.roomId).emit('board:update', {
-      socketId,
-      board: state.board,
-      currentPiece: state.currentPiece,
-      score: state.score,
-      linesCleared: state.linesCleared,
-    });
+    // ※ board:updateはクライアントのboard:syncから送信（サーバーからは送らない）
 
-    // ライン消去イベント（ハードドロップでのライン消去に対応）
+    // ライン消去イベント
     if (result && result.linesCleared > 0) {
       this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared, clearedRows: result.clearedRows });
     }
 
-    // ゲームオーバーチェック
-    if (state.isGameOver) {
-      this.handleKO(socketId);
-    }
+    // ※ ゲームオーバーはクライアントからの通知 (game:localGameOver) で判定
+  }
+
+  /** クライアントがローカルエンジンでゲームオーバーを検出した場合に呼ばれる */
+  reportGameOver(socketId: string): void {
+    this.handleKO(socketId);
   }
 
   private processAttack(socketId: string, result: LineClearResult): void {
@@ -185,21 +173,12 @@ export class ServerGameRoom {
 
       if (result || pieceChanged) {
         this.io.to(socketId).emit('game:state_ack', { seq: -1, ...stateAfter });
-        this.io.to(this.roomId).emit('board:update', {
-          socketId,
-          board: stateAfter.board,
-          currentPiece: stateAfter.currentPiece,
-          score: stateAfter.score,
-          linesCleared: stateAfter.linesCleared,
-        });
         if (result && result.linesCleared > 0) {
           this.io.to(socketId).emit('game:line_clear', { linesCleared: result.linesCleared, clearedRows: result.clearedRows });
         }
       }
 
-      if (stateAfter.isGameOver) {
-        this.handleKO(socketId);
-      }
+      // ※ ゲームオーバーはクライアントからの通知で判定（サーバーでは検知しない）
     }
   }
 

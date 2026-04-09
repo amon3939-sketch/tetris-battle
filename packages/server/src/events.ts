@@ -165,6 +165,13 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       room.gameRoom.processAction(socket.id, action, seq);
     });
 
+    // クライアントからのゲームオーバー通知（ローカルエンジンで検出）
+    socket.on('game:localGameOver', () => {
+      const room = roomManager.getRoomBySocketId(socket.id);
+      if (!room?.gameRoom) return;
+      room.gameRoom.reportGameOver(socket.id);
+    });
+
     // チャット
     socket.on('chat:send', ({ text }: { text: string }) => {
       const room = roomManager.getRoomBySocketId(socket.id);
