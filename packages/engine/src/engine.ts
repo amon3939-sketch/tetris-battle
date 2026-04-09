@@ -62,10 +62,15 @@ export class GameEngine {
   // Pending garbage (holes: サーバーが指定した穴位置。未指定ならランダム)
   private pendingGarbage: { lines: number; holes?: number[] }[] = [];
 
+  // Deferred garbage: lockPiece後に1段ずつアニメーション適用するためのキュー
+  private readyGarbage: { lines: number; holes?: number[] }[] = [];
+  private deferGarbage = false;
+
   // Pause state
   private paused = false;
 
   constructor(config: GameConfig) {
+    this.deferGarbage = config.deferGarbage ?? false;
     this.level = config.level ?? 1;
     this.bag = new SevenBag(config.seed);
     this.board = createEmptyBoard();
@@ -180,13 +185,20 @@ export class GameEngine {
       }
     }
 
-    // おじゃま処理（ボード上部のブロックが押し出されても即ゲームオーバーにはしない。
-    // 次のピースがスポーンできない場合にのみゲームオーバーとなる）
-    for (const garbage of this.pendingGarbage) {
-      const garbageResult = addGarbage(this.board, garbage.lines, garbage.holes);
-      this.board = garbageResult.board;
+    // おじゃま処理
+    if (this.deferGarbage) {
+      // クライアント側：readyGarbageに移し、1段ずつアニメーション適用する
+      this.readyGarbage.push(...this.pendingGarbage);
+      this.pendingGarbage = [];
+    } else {
+      // サーバー側：即座に全て適用（ボード上部のブロックが押し出されても即ゲームオーバーにはしない。
+      // 次のピースがスポーンできない場合にのみゲームオーバーとなる）
+      for (const garbage of this.pendingGarbage) {
+        const garbageResult = addGarbage(this.board, garbage.lines, garbage.holes);
+        this.board = garbageResult.board;
+      }
+      this.pendingGarbage = [];
     }
-    this.pendingGarbage = [];
 
     // 次のピースをスポーン
     this.spawnNextPiece();
@@ -357,6 +369,40 @@ export class GameEngine {
     }
 
     return null;
+  }
+
+  /** readyGarbageから1段だけ盤面に適用する。trueを返したらまだ残りあり */
+  applyOneGarbageLine(): boolean {
+    if (this.readyGarbage.length === 0) return false;
+    const first = this.readyGarbage[0];
+    if (first.lines <= 0) {
+      this.readyGarbage.shift();
+      return this.readyGarbage.length > 0 ? this.applyOneGarbageLine() : false;
+    }
+    // 1段だけ適用
+    const hole = first.holes?.[0];
+    const result = addGarbage(this.board, 1, hole != null ? [hole] : undefined);
+    this.board = result.board;
+    first.lines--;
+    if (first.holes) first.holes = first.holes.slice(1);
+    if (first.lines <= 0) this.readyGarbage.shift();
+    return this.readyGarbage.length > 0 && this.readyGarbage.some(g => g.lines > 0);
+  }
+
+  /** readyGarbageの残り行数を返す */
+  getReadyGarbageCount(): number {
+    return this.readyGarbage.reduce((sum, g) => sum + g.lines, 0);
+  }
+
+  /** readyGarbageを全て即時適用する（syncFromServer前のクリーンアップ用） */
+  applyAllReadyGarbage(): void {
+    for (const garbage of this.readyGarbage) {
+      if (garbage.lines > 0) {
+        const result = addGarbage(this.board, garbage.lines, garbage.holes);
+        this.board = result.board;
+      }
+    }
+    this.readyGarbage = [];
   }
 
   getState(): GameState {

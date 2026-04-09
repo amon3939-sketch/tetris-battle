@@ -55,4 +55,5 @@ export interface GameState {
 export interface GameConfig {
   seed: number;
   level?: number;
+  deferGarbage?: boolean;
 }

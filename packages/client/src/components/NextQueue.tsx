@@ -86,11 +86,14 @@ export default function NextQueue({ nextQueue }: Props) {
       const maxC = Math.max(...shape.map(([, c]) => c));
       const pieceH = maxR - minR + 1;
       const pieceW = maxC - minC + 1;
-      const offR = Math.floor((3 - pieceH) / 2) - minR;
-      const offC = Math.floor((4 - pieceW) / 2) - minC;
+      // ピクセルレベルで中央揃え
+      const offX = Math.round((WIDTH - pieceW * CELL_SIZE) / 2);
+      const offY = Math.round((SLOT_HEIGHT - pieceH * CELL_SIZE) / 2);
 
       for (const [r, c] of shape) {
-        drawMiniGlossy(ctx, (c + offC) * CELL_SIZE, yOff + (r + offR) * CELL_SIZE, CELL_SIZE, color);
+        const drawX = (c - minC) * CELL_SIZE + offX;
+        const drawY = yOff + (r - minR) * CELL_SIZE + offY;
+        drawMiniGlossy(ctx, drawX, drawY, CELL_SIZE, color);
       }
     }
   });

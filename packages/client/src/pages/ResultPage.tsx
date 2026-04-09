@@ -72,7 +72,7 @@ export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }
         </div>
 
         {/* Ranking Table */}
-        <div className="t99-frame" style={{ padding: 0, marginBottom: 24, overflow: 'hidden', position: 'relative' }}>
+        <div className="t99-frame" style={{ padding: 0, marginBottom: 24, position: 'relative' }}>
           <div className="t99-frame-label">RANKING</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -156,6 +156,7 @@ const thStyle: React.CSSProperties = {
   color: 'rgba(0,200,255,0.7)', fontSize: 11, fontWeight: 700,
   letterSpacing: 1, textTransform: 'uppercase' as const,
   borderBottom: '1px solid rgba(0,150,200,0.2)',
+  whiteSpace: 'nowrap',
 };
 
 const tdStyle: React.CSSProperties = {

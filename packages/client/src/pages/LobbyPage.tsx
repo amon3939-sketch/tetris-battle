@@ -278,7 +278,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
                         opacity: room.status === 'playing' || room.playerCount >= room.maxPlayers ? 0.4 : 1,
                       }}
                     >
-                      参加
+                      <span style={{ whiteSpace: 'nowrap' }}>参加</span>
                     </button>
                   </td>
                 </tr>
@@ -316,8 +316,8 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
                 <th style={thStyle}>プレイヤー</th>
                 {rankingTab === 'multi' && <th style={{ ...thStyle, width: 60 }}>勝利</th>}
                 {rankingTab === 'multi' && <th style={{ ...thStyle, width: 60 }}>勝率</th>}
-                <th style={{ ...thStyle, width: 100 }}>最高スコア</th>
-                <th style={{ ...thStyle, width: 80 }}>
+                <th style={{ ...thStyle, minWidth: 100 }}>最高スコア</th>
+                <th style={{ ...thStyle, minWidth: 90 }}>
                   {rankingTab === 'solo' ? '最高ライン' : '総ライン'}
                 </th>
               </tr>
@@ -371,6 +371,7 @@ const thStyle: React.CSSProperties = {
   color: 'rgba(0,200,255,0.7)', fontSize: 11, fontWeight: 700,
   letterSpacing: 1, textTransform: 'uppercase' as const,
   borderBottom: '1px solid rgba(0,150,200,0.2)',
+  whiteSpace: 'nowrap',
 };
 
 const tdStyle: React.CSSProperties = {

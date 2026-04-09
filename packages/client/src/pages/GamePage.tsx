@@ -111,6 +111,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   // Garbage indicator
   const [garbageStock, setGarbageStock] = useState(0);
+  const garbageAnimTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const STAMPS = [
     { id: 'ganbare', text: '頑張れ！', style: 'pop' },
@@ -159,7 +160,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     if (!gameReadyData) return;
 
     if (gameReadyData.seed != null && !localEngineRef.current) {
-      localEngineRef.current = new GameEngine({ seed: gameReadyData.seed });
+      localEngineRef.current = new GameEngine({ seed: gameReadyData.seed, deferGarbage: true });
       setLocalState(localEngineRef.current.getState());
     }
 
@@ -192,6 +193,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                 if (canvasRef.current) {
                   canvasRef.current.triggerLineClear(result.clearedRows);
                 }
+              }
+              // ロック発生時：お邪魔ラインアニメーション開始
+              if (result) {
+                startGarbageAnimation();
               }
               const state = engine.getState();
               setLocalState({
@@ -227,6 +232,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         clearInterval(localTickRef.current);
         localTickRef.current = null;
       }
+      if (garbageAnimTimerRef.current) {
+        clearInterval(garbageAnimTimerRef.current);
+        garbageAnimTimerRef.current = null;
+      }
     };
   }, [gameReadyData]);
 
@@ -258,13 +267,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);
-      // おじゃまラインが盤面に反映されるタイミングで1段ずつ減少
-      const linesToClear = data.lines;
-      for (let i = 0; i < linesToClear; i++) {
-        setTimeout(() => {
-          setGarbageStock(prev => Math.max(0, prev - 1));
-        }, 800 + i * 150);
-      }
     };
 
     const onPlayerKO = (data: { socketId: string; rank: number }) => {
@@ -354,6 +356,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           canvasRef.current.triggerLineClear(result.clearedRows);
         }
       }
+      // ロック発生時：お邪魔ラインアニメーション開始
+      if (result) {
+        startGarbageAnimation();
+      }
 
       const state = engine.getState();
       setLocalState({
@@ -437,6 +443,39 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   useEffect(() => {
     soundManager.setBGMVolume(bgmVol);
     soundManager.setSEVolume(seVol);
+  }, []);
+
+  // ===== Garbage animation: 1段ずつ盤面に反映 =====
+  const startGarbageAnimation = useCallback(() => {
+    const engine = localEngineRef.current;
+    if (!engine || engine.getReadyGarbageCount() === 0) return;
+    // 既にアニメーション中なら何もしない
+    if (garbageAnimTimerRef.current) return;
+    garbageAnimTimerRef.current = setInterval(() => {
+      const eng = localEngineRef.current;
+      if (!eng) {
+        if (garbageAnimTimerRef.current) clearInterval(garbageAnimTimerRef.current);
+        garbageAnimTimerRef.current = null;
+        return;
+      }
+      const hasMore = eng.applyOneGarbageLine();
+      setGarbageStock(prev => Math.max(0, prev - 1));
+      // 状態更新
+      const state = eng.getState();
+      setLocalState({
+        ...state,
+        score: serverScoreRef.current,
+        linesCleared: serverLinesRef.current,
+        level: serverLevelRef.current,
+        combo: serverComboRef.current,
+        b2bActive: serverB2bRef.current,
+        isGameOver: state.isGameOver,
+      });
+      if (!hasMore) {
+        if (garbageAnimTimerRef.current) clearInterval(garbageAnimTimerRef.current);
+        garbageAnimTimerRef.current = null;
+      }
+    }, 100); // 100msごとに1段ずつ
   }, []);
 
   useInputHandler(gameActive && !isGameOver && !paused && !showMenu, settings, sendAction, keyMap);

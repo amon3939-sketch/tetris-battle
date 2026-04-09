@@ -148,7 +148,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
           {isHost && (
             <>
               <button onClick={handleStart} style={{
-                flex: 1, padding: '14px 24px', fontSize: 16, fontWeight: 900,
+                flex: 1, padding: '14px 24px', fontSize: 16, fontWeight: 900, whiteSpace: 'nowrap',
                 background: playersNeeded > 0
                   ? 'rgba(0,30,60,0.5)' : 'linear-gradient(180deg, #00cc88, #008855)',
                 color: '#fff',
@@ -162,7 +162,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
                 ゲーム開始
               </button>
               <button onClick={() => setShowSettings(!showSettings)} style={{
-                padding: '14px 20px', fontSize: 13, fontWeight: 700,
+                padding: '14px 20px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
                 background: 'rgba(0,30,60,0.8)', color: '#00ccff',
                 border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8, cursor: 'pointer',
               }}>

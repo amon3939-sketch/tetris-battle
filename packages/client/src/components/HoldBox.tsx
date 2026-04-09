@@ -57,6 +57,7 @@ export default function HoldBox({ holdPiece, holdUsed }: Props) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = 'rgba(0, 8, 20, 0.7)';
     ctx.fillRect(0, 0, size, size);
 
@@ -66,18 +67,21 @@ export default function HoldBox({ holdPiece, holdUsed }: Props) {
     const color = CELL_COLORS[PIECE_CELL[holdPiece]];
     ctx.globalAlpha = holdUsed ? 0.35 : 1;
 
+    // ピースの実際のバウンディングボックスを計算
     const minR = Math.min(...shape.map(([r]) => r));
     const maxR = Math.max(...shape.map(([r]) => r));
     const minC = Math.min(...shape.map(([, c]) => c));
     const maxC = Math.max(...shape.map(([, c]) => c));
     const pieceH = maxR - minR + 1;
     const pieceW = maxC - minC + 1;
-    // ピクセルレベルで中央揃え
-    const pixelOffX = (size - pieceW * CELL_SIZE) / 2 - minC * CELL_SIZE;
-    const pixelOffY = (size - pieceH * CELL_SIZE) / 2 - minR * CELL_SIZE;
+    // 正規化した座標でセンタリング
+    const offX = Math.round((size - pieceW * CELL_SIZE) / 2);
+    const offY = Math.round((size - pieceH * CELL_SIZE) / 2);
 
     for (const [r, c] of shape) {
-      drawMiniGlossy(ctx, c * CELL_SIZE + pixelOffX, r * CELL_SIZE + pixelOffY, CELL_SIZE, color);
+      const drawX = (c - minC) * CELL_SIZE + offX;
+      const drawY = (r - minR) * CELL_SIZE + offY;
+      drawMiniGlossy(ctx, drawX, drawY, CELL_SIZE, color);
     }
 
     ctx.globalAlpha = 1;
