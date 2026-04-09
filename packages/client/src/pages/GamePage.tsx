@@ -159,6 +159,9 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   useEffect(() => {
     if (!gameReadyData) return;
 
+    // カウントダウン開始時にロビーBGMを止める
+    soundManager.stopBGM();
+
     if (gameReadyData.seed != null && !localEngineRef.current) {
       localEngineRef.current = new GameEngine({ seed: gameReadyData.seed, deferGarbage: true });
       setLocalState(localEngineRef.current.getState());
@@ -674,24 +677,63 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
             animation: screenShake ? 'screenShake 0.15s ease-out' : 'none',
             position: 'relative',
           }}>
-            {/* Garbage stock indicator (left side) - 1マス=1段 */}
-            <div style={{
-              position: 'absolute', left: -16, bottom: 4, width: 10,
-              height: 20 * 30, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-              borderRadius: 3, overflow: 'hidden',
-              background: 'rgba(0, 30, 60, 0.4)',
-              border: '1px solid rgba(0, 150, 200, 0.2)',
-            }}>
-              {Array.from({ length: Math.min(garbageStock, 20) }).map((_, i) => (
-                <div key={i} style={{
-                  width: '100%', height: 30, /* = CELL_SIZE */
-                  background: 'linear-gradient(0deg, #ff3333, #ff5544)',
-                  borderTop: '1px solid rgba(255,80,80,0.4)',
-                  boxShadow: i === 0 ? '0 0 6px rgba(255,50,30,0.6)' : 'none',
-                  animation: 'garbageRise 0.3s ease-out',
-                }} />
-              ))}
-            </div>
+            {/* Garbage stock indicator (left side) - 1マス=1段のブロック表示 */}
+            {(() => {
+              const count = Math.min(garbageStock, 20);
+              // 色計算: グレー(少)→黄色(中)→赤(多)
+              const getBlockColor = (totalLines: number, blockIndex: number) => {
+                // blockIndex: 0=一番下, count-1=一番上
+                const ratio = totalLines <= 1 ? 0 : Math.min(1, totalLines / 12);
+                if (ratio < 0.35) {
+                  // グレー→黄色
+                  const t = ratio / 0.35;
+                  const r = Math.round(140 + t * 115); // 140→255
+                  const g = Math.round(140 + t * 75);  // 140→215
+                  const b = Math.round(140 - t * 140);  // 140→0
+                  return `rgb(${r},${g},${b})`;
+                } else {
+                  // 黄色→赤
+                  const t = (ratio - 0.35) / 0.65;
+                  const r = 255;
+                  const g = Math.round(215 - t * 175); // 215→40
+                  const b = Math.round(t * 40);         // 0→40
+                  return `rgb(${r},${g},${b})`;
+                }
+              };
+              const baseColor = getBlockColor(count, 0);
+              // ベベルハイライト/シャドウ用
+              const lightenC = (hex: string, amt: number) => {
+                const m = hex.match(/\d+/g)!;
+                return `rgb(${Math.min(255,+m[0]+amt)},${Math.min(255,+m[1]+amt)},${Math.min(255,+m[2]+amt)})`;
+              };
+              const darkenC = (hex: string, amt: number) => {
+                const m = hex.match(/\d+/g)!;
+                return `rgb(${Math.max(0,+m[0]-amt)},${Math.max(0,+m[1]-amt)},${Math.max(0,+m[2]-amt)})`;
+              };
+              return (
+                <div style={{
+                  position: 'absolute', left: -18, bottom: 4, width: 12,
+                  height: 20 * 30, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                  borderRadius: 3, overflow: 'hidden',
+                  background: 'rgba(0, 20, 40, 0.5)',
+                  border: '1px solid rgba(0, 150, 200, 0.2)',
+                }}>
+                  {Array.from({ length: count }).map((_, i) => {
+                    const color = baseColor;
+                    return (
+                      <div key={i} style={{
+                        width: '100%', height: 30,
+                        background: `linear-gradient(180deg, ${lightenC(color, 40)} 0%, ${color} 40%, ${darkenC(color, 50)} 100%)`,
+                        borderTop: `1px solid ${lightenC(color, 60)}`,
+                        borderBottom: `1px solid ${darkenC(color, 40)}`,
+                        boxShadow: count >= 8 ? `0 0 4px ${darkenC(color, 20)}` : 'none',
+                        animation: 'garbageRise 0.3s ease-out',
+                      }} />
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             <GameCanvas
               ref={canvasRef}

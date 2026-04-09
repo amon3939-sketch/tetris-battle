@@ -3,7 +3,7 @@ import type { PieceType } from '@tetris/engine/src/types.ts';
 import { PIECE_SHAPES, PIECE_CELL } from '@tetris/engine/src/piece.ts';
 import { CELL_COLORS } from './GameCanvas.tsx';
 
-const CELL_SIZE = 24;
+const CELL_SIZE = 20;
 
 function lighten(hex: string, amount: number): string {
   const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + amount);
@@ -49,7 +49,7 @@ interface Props {
 
 export default function HoldBox({ holdPiece, holdUsed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const size = 4 * CELL_SIZE;
+  const size = 4 * CELL_SIZE; // 80px (was 96)
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,7 +65,8 @@ export default function HoldBox({ holdPiece, holdUsed }: Props) {
 
     const shape = PIECE_SHAPES[holdPiece];
     const color = CELL_COLORS[PIECE_CELL[holdPiece]];
-    ctx.globalAlpha = holdUsed ? 0.35 : 1;
+    // ホールド済みでも明るさは変えない
+    ctx.globalAlpha = 1;
 
     // ピースの実際のバウンディングボックスを計算
     const minR = Math.min(...shape.map(([r]) => r));
