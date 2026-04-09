@@ -4,7 +4,6 @@ import { PIECE_SHAPES, PIECE_CELL } from '@tetris/engine/src/piece.ts';
 import { CELL_COLORS } from './GameCanvas.tsx';
 
 const CELL_SIZE = 20;
-const BEVEL = 2;
 const SLOT_HEIGHT = 3 * CELL_SIZE;
 const WIDTH = 4 * CELL_SIZE;
 const MAX_NEXT = 5;
@@ -23,17 +22,27 @@ function darken(hex: string, amount: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function drawMiniTile(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, baseColor: string) {
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(x, y, size, size);
-  ctx.fillStyle = lighten(baseColor, 50);
-  ctx.fillRect(x, y, size, BEVEL);
-  ctx.fillRect(x, y, BEVEL, size);
-  ctx.fillStyle = darken(baseColor, 50);
-  ctx.fillRect(x, y + size - BEVEL, size, BEVEL);
-  ctx.fillRect(x + size - BEVEL, y, BEVEL, size);
-  ctx.fillStyle = lighten(baseColor, 15);
-  ctx.fillRect(x + BEVEL, y + BEVEL, size - BEVEL * 2, size - BEVEL * 2);
+function drawMiniGlossy(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, baseColor: string) {
+  const bevel = 2;
+  const pad = 1;
+  const cx = x + pad; const cy = y + pad; const s = size - pad * 2;
+  ctx.fillStyle = lighten(baseColor, 60);
+  ctx.fillRect(cx, cy, s, bevel);
+  ctx.fillRect(cx, cy, bevel, s);
+  ctx.fillStyle = darken(baseColor, 60);
+  ctx.fillRect(cx, cy + s - bevel, s, bevel);
+  ctx.fillRect(cx + s - bevel, cy, bevel, s);
+  const grad = ctx.createLinearGradient(cx, cy, cx, cy + s);
+  grad.addColorStop(0, lighten(baseColor, 30));
+  grad.addColorStop(0.4, baseColor);
+  grad.addColorStop(1, darken(baseColor, 30));
+  ctx.fillStyle = grad;
+  ctx.fillRect(cx + bevel, cy + bevel, s - bevel * 2, s - bevel * 2);
+  const shine = ctx.createRadialGradient(cx + s * 0.3, cy + s * 0.25, 0, cx + s * 0.3, cy + s * 0.25, s * 0.4);
+  shine.addColorStop(0, 'rgba(255,255,255,0.35)');
+  shine.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = shine;
+  ctx.fillRect(cx + bevel, cy + bevel, s - bevel * 2, (s - bevel * 2) * 0.5);
 }
 
 interface Props {
@@ -50,7 +59,7 @@ export default function NextQueue({ nextQueue }: Props) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.fillStyle = '#1a1a2e';
+    ctx.fillStyle = 'rgba(0, 8, 20, 0.7)';
     ctx.fillRect(0, 0, WIDTH, totalHeight);
 
     const queue = nextQueue.slice(0, MAX_NEXT);
@@ -60,6 +69,16 @@ export default function NextQueue({ nextQueue }: Props) {
       const shape = PIECE_SHAPES[type];
       const color = CELL_COLORS[PIECE_CELL[type]];
       const yOff = i * SLOT_HEIGHT;
+
+      // Separator line
+      if (i > 0) {
+        ctx.strokeStyle = 'rgba(0, 150, 200, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(4, yOff);
+        ctx.lineTo(WIDTH - 4, yOff);
+        ctx.stroke();
+      }
 
       const minR = Math.min(...shape.map(([r]) => r));
       const maxR = Math.max(...shape.map(([r]) => r));
@@ -71,18 +90,19 @@ export default function NextQueue({ nextQueue }: Props) {
       const offC = Math.floor((4 - pieceW) / 2) - minC;
 
       for (const [r, c] of shape) {
-        drawMiniTile(ctx, (c + offC) * CELL_SIZE, yOff + (r + offR) * CELL_SIZE, CELL_SIZE, color);
+        drawMiniGlossy(ctx, (c + offC) * CELL_SIZE, yOff + (r + offR) * CELL_SIZE, CELL_SIZE, color);
       }
     }
   });
 
   return (
-    <div>
+    <div className="t99-frame" style={{ padding: 6, position: 'relative' }}>
+      <div className="t99-frame-label">NEXT</div>
       <canvas
         ref={canvasRef}
         width={WIDTH}
         height={totalHeight}
-        style={{ border: '1px solid #3a3a5c', borderRadius: 4, background: '#1a1a2e' }}
+        style={{ display: 'block', borderRadius: 2 }}
       />
     </div>
   );

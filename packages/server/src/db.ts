@@ -1,7 +1,6 @@
 /**
  * インメモリデータベース実装
- * better-sqlite3 のネイティブモジュール依存を排除し、
- * Render等のクラウド環境での互換性を確保する。
+ * ソロモードとマルチモードのランキングを分離して管理
  */
 
 export interface PlayerRecord {
@@ -19,6 +18,7 @@ export interface MatchRecord {
   winnerId: number | null;
   durationSec: number;
   playedAt: string;
+  isSolo: boolean;
 }
 
 export interface MatchPlayerRecord {
@@ -73,7 +73,8 @@ export function saveMatch(db: Database, params: {
   roomName: string;
   playerCount: number;
   durationSec: number;
-  winnerId: string | null; // fingerprint
+  winnerId: string | null;
+  isSolo: boolean;
   players: Array<{
     fingerprint: string;
     nickname: string;
@@ -85,7 +86,6 @@ export function saveMatch(db: Database, params: {
     koCount: number;
   }>;
 }): void {
-  // Resolve player IDs
   const playerIds = new Map<string, number>();
   for (const p of params.players) {
     const id = getOrCreatePlayer(db, p.fingerprint, p.nickname);
@@ -94,7 +94,6 @@ export function saveMatch(db: Database, params: {
 
   const winnerDbId = params.winnerId ? (playerIds.get(params.winnerId) ?? null) : null;
 
-  // Insert match
   const matchId = db.nextMatchId++;
   db.matches.push({
     id: matchId,
@@ -103,9 +102,9 @@ export function saveMatch(db: Database, params: {
     winnerId: winnerDbId,
     durationSec: params.durationSec,
     playedAt: new Date().toISOString(),
+    isSolo: params.isSolo,
   });
 
-  // Insert match_players and update stats
   for (const p of params.players) {
     const playerId = playerIds.get(p.fingerprint)!;
     db.matchPlayers.push({
@@ -129,31 +128,69 @@ export function saveMatch(db: Database, params: {
   }
 }
 
-export function getRanking(db: Database, limit = 20): Array<{
+/** ランキング取得（mode: 'solo' | 'multi' | 'all'） */
+export function getRanking(db: Database, limit = 10, mode: 'solo' | 'multi' | 'all' = 'all'): Array<{
   nickname: string;
   totalWins: number;
   totalMatches: number;
   winRate: number;
   bestScore: number;
   totalLines: number;
+  bestLines: number;
 }> {
-  return db.players
-    .filter(p => p.totalMatches > 0)
-    .sort((a, b) => b.totalWins - a.totalWins)
-    .slice(0, limit)
-    .map(p => {
-      const playerMatches = db.matchPlayers.filter(mp => mp.playerId === p.id);
-      const bestScore = playerMatches.length > 0
-        ? Math.max(...playerMatches.map(mp => mp.score))
-        : 0;
-      const totalLines = playerMatches.reduce((sum, mp) => sum + mp.linesCleared, 0);
-      return {
-        nickname: p.nickname,
-        totalWins: p.totalWins,
-        totalMatches: p.totalMatches,
-        winRate: p.totalMatches > 0 ? p.totalWins / p.totalMatches : 0,
-        bestScore,
-        totalLines,
-      };
-    });
+  // mode に応じたマッチIDをフィルタリング
+  const filteredMatchIds = new Set(
+    db.matches
+      .filter(m => {
+        if (mode === 'solo') return m.isSolo;
+        if (mode === 'multi') return !m.isSolo;
+        return true;
+      })
+      .map(m => m.id)
+  );
+
+  // プレイヤーごとに該当モードの統計を集計
+  const stats = new Map<number, {
+    nickname: string;
+    wins: number;
+    matches: number;
+    bestScore: number;
+    totalLines: number;
+    bestLines: number;
+  }>();
+
+  for (const mp of db.matchPlayers) {
+    if (!filteredMatchIds.has(mp.matchId)) continue;
+
+    const player = db.players.find(p => p.id === mp.playerId);
+    if (!player) continue;
+
+    let s = stats.get(mp.playerId);
+    if (!s) {
+      s = { nickname: player.nickname, wins: 0, matches: 0, bestScore: 0, totalLines: 0, bestLines: 0 };
+      stats.set(mp.playerId, s);
+    }
+
+    s.matches++;
+    if (mp.rank === 1) s.wins++;
+    if (mp.score > s.bestScore) s.bestScore = mp.score;
+    s.totalLines += mp.linesCleared;
+    if (mp.linesCleared > s.bestLines) s.bestLines = mp.linesCleared;
+  }
+
+  // ソロはbestScoreで、マルチはwinsでソート
+  const sorted = Array.from(stats.values()).sort((a, b) => {
+    if (mode === 'solo') return b.bestScore - a.bestScore;
+    return b.wins - a.wins || b.bestScore - a.bestScore;
+  });
+
+  return sorted.slice(0, limit).map(s => ({
+    nickname: s.nickname,
+    totalWins: s.wins,
+    totalMatches: s.matches,
+    winRate: s.matches > 0 ? s.wins / s.matches : 0,
+    bestScore: s.bestScore,
+    totalLines: s.totalLines,
+    bestLines: s.bestLines,
+  }));
 }

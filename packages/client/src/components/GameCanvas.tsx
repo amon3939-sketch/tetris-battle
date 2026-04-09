@@ -7,7 +7,7 @@ const BOARD_WIDTH = 10 * CELL_SIZE;
 const BOARD_HEIGHT = 20 * CELL_SIZE;
 
 export const CELL_COLORS: Record<number, string> = {
-  0: '#1a1a2e',
+  0: '#0a0e1a',
   1: '#00f0f0',   // I: シアン
   2: '#f0f000',   // O: 黄
   3: '#a000f0',   // T: 紫
@@ -16,6 +16,18 @@ export const CELL_COLORS: Record<number, string> = {
   6: '#0000f0',   // J: 青
   7: '#f0a000',   // L: オレンジ
   8: '#808080',   // おじゃま: グレー
+};
+
+// Glossy version colors (lighter center)
+const CELL_GLOSS: Record<number, string> = {
+  1: '#66ffff',
+  2: '#ffff66',
+  3: '#cc66ff',
+  4: '#66ff66',
+  5: '#ff6666',
+  6: '#6666ff',
+  7: '#ffcc66',
+  8: '#b0b0b0',
 };
 
 function lighten(hex: string, amount: number): string {
@@ -32,31 +44,92 @@ function darken(hex: string, amount: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function drawTileCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, baseColor: string) {
+/** TETRIS 99 style glossy block with shine highlight */
+function drawGlossyCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, cellType: number) {
+  const baseColor = CELL_COLORS[cellType] || CELL_COLORS[0];
+  const glossColor = CELL_GLOSS[cellType] || baseColor;
   const bevel = 3;
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(x, y, size, size);
-  ctx.fillStyle = lighten(baseColor, 60);
+  const pad = 1; // gap between cells
+
+  const cx = x + pad;
+  const cy = y + pad;
+  const s = size - pad * 2;
+
+  // Outer bevel (lighter top-left, darker bottom-right)
+  // Top edge
+  ctx.fillStyle = lighten(baseColor, 80);
   ctx.beginPath();
-  ctx.moveTo(x, y); ctx.lineTo(x + size, y); ctx.lineTo(x + size - bevel, y + bevel); ctx.lineTo(x + bevel, y + bevel);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = lighten(baseColor, 40);
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + s, cy);
+  ctx.lineTo(cx + s - bevel, cy + bevel);
+  ctx.lineTo(cx + bevel, cy + bevel);
+  ctx.closePath();
+  ctx.fill();
+
+  // Left edge
+  ctx.fillStyle = lighten(baseColor, 50);
   ctx.beginPath();
-  ctx.moveTo(x, y); ctx.lineTo(x + bevel, y + bevel); ctx.lineTo(x + bevel, y + size - bevel); ctx.lineTo(x, y + size);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = darken(baseColor, 60);
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + bevel, cy + bevel);
+  ctx.lineTo(cx + bevel, cy + s - bevel);
+  ctx.lineTo(cx, cy + s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom edge
+  ctx.fillStyle = darken(baseColor, 70);
   ctx.beginPath();
-  ctx.moveTo(x, y + size); ctx.lineTo(x + size, y + size); ctx.lineTo(x + size - bevel, y + size - bevel); ctx.lineTo(x + bevel, y + size - bevel);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = darken(baseColor, 40);
+  ctx.moveTo(cx, cy + s);
+  ctx.lineTo(cx + s, cy + s);
+  ctx.lineTo(cx + s - bevel, cy + s - bevel);
+  ctx.lineTo(cx + bevel, cy + s - bevel);
+  ctx.closePath();
+  ctx.fill();
+
+  // Right edge
+  ctx.fillStyle = darken(baseColor, 50);
   ctx.beginPath();
-  ctx.moveTo(x + size, y); ctx.lineTo(x + size, y + size); ctx.lineTo(x + size - bevel, y + size - bevel); ctx.lineTo(x + size - bevel, y + bevel);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = lighten(baseColor, 20);
-  ctx.fillRect(x + bevel, y + bevel, size - bevel * 2, size - bevel * 2);
+  ctx.moveTo(cx + s, cy);
+  ctx.lineTo(cx + s, cy + s);
+  ctx.lineTo(cx + s - bevel, cy + s - bevel);
+  ctx.lineTo(cx + s - bevel, cy + bevel);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner face with gradient (glossy effect)
+  const innerX = cx + bevel;
+  const innerY = cy + bevel;
+  const innerS = s - bevel * 2;
+  const grad = ctx.createLinearGradient(innerX, innerY, innerX, innerY + innerS);
+  grad.addColorStop(0, glossColor);
+  grad.addColorStop(0.4, baseColor);
+  grad.addColorStop(1, darken(baseColor, 30));
+  ctx.fillStyle = grad;
+  ctx.fillRect(innerX, innerY, innerS, innerS);
+
+  // Shine highlight (top-left corner reflection)
+  const shineGrad = ctx.createRadialGradient(
+    cx + s * 0.3, cy + s * 0.25, 0,
+    cx + s * 0.3, cy + s * 0.25, s * 0.5
+  );
+  shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+  shineGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+  shineGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = shineGrad;
+  ctx.fillRect(cx + bevel, cy + bevel, innerS, innerS * 0.6);
 }
 
-const GHOST_ALPHA = 0.4;
+/** Empty cell with subtle grid */
+function drawEmptyCell(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  ctx.fillStyle = 'rgba(0, 15, 40, 0.6)';
+  ctx.fillRect(x, y, size, size);
+  // Subtle border
+  ctx.strokeStyle = 'rgba(0, 100, 180, 0.08)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+}
+
+const GHOST_ALPHA = 0.35;
 
 function getPieceCellsForRender(piece: Piece): [number, number][] {
   const shape = PIECE_SHAPES[piece.type];
@@ -90,8 +163,8 @@ interface Particle {
   y: number;
   vx: number;
   vy: number;
-  life: number;   // 0~1
-  maxLife: number; // ms
+  life: number;
+  maxLife: number;
   born: number;
   size: number;
   color: string;
@@ -100,8 +173,7 @@ interface Particle {
 interface LineClearEffect {
   rows: number[];
   startTime: number;
-  duration: number; // ms (フラッシュ + フェードアウト合計)
-  // 消去行のスナップショット（消去前のセル色情報）は不要 - 白フラッシュのみ使用
+  duration: number;
 }
 
 interface HardDropEffect {
@@ -120,9 +192,10 @@ interface Props {
   currentPiece: Piece | null;
   incomingAttack: number;
   isGameOver: boolean;
+  collisionCells?: [number, number][];
 }
 
-const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, incomingAttack, isGameOver }, ref) => {
+const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, incomingAttack, isGameOver, collisionCells }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const effectsRef = useRef<{
     hardDrops: HardDropEffect[];
@@ -135,40 +208,59 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
   useImperativeHandle(ref, () => ({
     triggerHardDrop(cells: [number, number][]) {
       const now = performance.now();
-      // 着地光エフェクト
       effectsRef.current.hardDrops.push({
         cells,
         startTime: now,
         duration: 250,
       });
-      // パーティクルバースト
       for (const [r, c] of cells) {
         if (r < 0 || r >= 20 || c < 0 || c >= 10) continue;
         const cx = c * CELL_SIZE + CELL_SIZE / 2;
         const cy = r * CELL_SIZE + CELL_SIZE / 2;
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI * 2 * i) / 6 + (Math.random() - 0.5) * 0.6;
-          const speed = 80 + Math.random() * 120;
+        for (let i = 0; i < 8; i++) {
+          const angle = (Math.PI * 2 * i) / 8 + (Math.random() - 0.5) * 0.5;
+          const speed = 100 + Math.random() * 140;
           effectsRef.current.particles.push({
             x: cx,
             y: cy,
             vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 40, // 上方向バイアス
+            vy: Math.sin(angle) * speed - 60,
             life: 1,
-            maxLife: 350 + Math.random() * 200,
+            maxLife: 400 + Math.random() * 250,
             born: now,
-            size: 2 + Math.random() * 3,
-            color: `hsl(${40 + Math.random() * 30}, 100%, ${70 + Math.random() * 20}%)`,
+            size: 2 + Math.random() * 3.5,
+            color: `hsl(${190 + Math.random() * 30}, 100%, ${70 + Math.random() * 25}%)`,
           });
         }
       }
     },
     triggerLineClear(rows: number[]) {
+      const now = performance.now();
       effectsRef.current.lineClears.push({
         rows,
-        startTime: performance.now(),
-        duration: 600, // 白フラッシュ+フェードアウト合計
+        startTime: now,
+        duration: 700,
       });
+      // Line clear particles
+      for (const row of rows) {
+        for (let c = 0; c < 10; c++) {
+          const cx = c * CELL_SIZE + CELL_SIZE / 2;
+          const cy = row * CELL_SIZE + CELL_SIZE / 2;
+          for (let i = 0; i < 3; i++) {
+            effectsRef.current.particles.push({
+              x: cx,
+              y: cy,
+              vx: (Math.random() - 0.5) * 200,
+              vy: -60 - Math.random() * 100,
+              life: 1,
+              maxLife: 500 + Math.random() * 300,
+              born: now,
+              size: 1.5 + Math.random() * 2,
+              color: `hsl(${190 + Math.random() * 40}, 100%, ${80 + Math.random() * 15}%)`,
+            });
+          }
+        }
+      }
     },
   }));
 
@@ -181,8 +273,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
     const render = () => {
       const now = performance.now();
 
-      // Clear
-      ctx.fillStyle = '#0a0a1a';
+      // Clear with deep blue/dark background
+      ctx.fillStyle = 'rgba(0, 8, 20, 0.95)';
       ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
       if (!board) {
@@ -190,66 +282,81 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         return;
       }
 
-      // Draw board cells（ライン消去エフェクトとは独立して描画）
+      // Draw board cells
       for (let r = 0; r < 20; r++) {
         for (let c = 0; c < 10; c++) {
           const cell = board[r][c];
           if (cell === 0) {
-            ctx.fillStyle = CELL_COLORS[0];
-            ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            drawEmptyCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE);
           } else {
-            const baseColor = CELL_COLORS[cell] || CELL_COLORS[0];
-            drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, baseColor);
+            drawGlossyCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, cell);
           }
         }
       }
 
-      // ライン消去エフェクト（ボード描画の上にオーバーレイ）
+      // ライン消去エフェクト
       for (const eff of effectsRef.current.lineClears) {
         const elapsed = now - eff.startTime;
         const p = Math.min(1, elapsed / eff.duration);
         for (const row of eff.rows) {
           if (row < 0 || row >= 20) continue;
           const y = row * CELL_SIZE;
-          if (p < 0.4) {
-            // フェーズ1: 白フラッシュ（行全体が白く光る）
-            const t = p / 0.4;
-            const flashAlpha = t < 0.3 ? (t / 0.3) * 0.9 : 0.9 * (1 - (t - 0.3) / 0.7);
-            ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, flashAlpha)})`;
+          if (p < 0.3) {
+            // Flash phase - bright cyan/white
+            const t = p / 0.3;
+            const flashAlpha = t < 0.3 ? (t / 0.3) * 0.95 : 0.95 * (1 - (t - 0.3) / 0.7);
+            ctx.fillStyle = `rgba(100, 220, 255, ${Math.max(0, flashAlpha)})`;
             ctx.fillRect(0, y, BOARD_WIDTH, CELL_SIZE);
+            // Add white core
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, flashAlpha * 0.6)})`;
+            ctx.fillRect(0, y + CELL_SIZE * 0.2, BOARD_WIDTH, CELL_SIZE * 0.6);
           } else {
-            // フェーズ2: フェードアウト
-            const fadeProgress = (p - 0.4) / 0.6;
-            const alpha = (1 - fadeProgress) * 0.5;
+            // Fade out
+            const fadeProgress = (p - 0.3) / 0.7;
+            const alpha = (1 - fadeProgress) * 0.4;
             if (alpha > 0.01) {
-              ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+              ctx.fillStyle = `rgba(100, 220, 255, ${alpha})`;
               ctx.fillRect(0, y, BOARD_WIDTH, CELL_SIZE);
             }
           }
         }
       }
 
-      // Game over gray-out animation (top to bottom, one row at a time)
+      // Game over gray-out + collision highlight
       if (isGameOver && board) {
         if (!gameOverStartRef.current) {
           gameOverStartRef.current = now;
         }
         const elapsed = now - gameOverStartRef.current;
-        const ROW_DELAY = 50; // ms per row
+        const ROW_DELAY = 40;
         for (let r = 0; r < 20; r++) {
           const rowStart = r * ROW_DELAY;
           if (elapsed >= rowStart) {
-            const rowProgress = Math.min(1, (elapsed - rowStart) / 200); // 200ms fade per row
-            const alpha = rowProgress * 0.75;
-            ctx.fillStyle = `rgba(60, 60, 60, ${alpha})`;
+            const rowProgress = Math.min(1, (elapsed - rowStart) / 200);
+            const alpha = rowProgress * 0.7;
+            ctx.fillStyle = `rgba(20, 20, 40, ${alpha})`;
             ctx.fillRect(0, r * CELL_SIZE, BOARD_WIDTH, CELL_SIZE);
+          }
+        }
+
+        // Collision cells highlight (blinking red)
+        if (collisionCells && collisionCells.length > 0 && elapsed > 300) {
+          const blinkPhase = Math.sin((now - gameOverStartRef.current) * 0.008) * 0.5 + 0.5;
+          for (const [r, c] of collisionCells) {
+            if (r >= 0 && r < 20 && c >= 0 && c < 10) {
+              ctx.fillStyle = `rgba(255, 30, 30, ${0.3 + blinkPhase * 0.5})`;
+              ctx.fillRect(c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+              ctx.strokeStyle = `rgba(255, 100, 100, ${0.5 + blinkPhase * 0.5})`;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+            }
           }
         }
       } else {
         gameOverStartRef.current = null;
       }
 
-      // Draw ghost piece (枠線 + 半透明塗り)
+      // Draw ghost piece
       if (currentPiece) {
         const ghostY = getGhostY(board, currentPiece);
         if (ghostY !== currentPiece.y) {
@@ -259,72 +366,48 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
             if (r >= 0 && r < 20 && c >= 0 && c < 10) {
               const x = c * CELL_SIZE;
               const y = r * CELL_SIZE;
-              // 半透明塗りつぶし
               ctx.globalAlpha = GHOST_ALPHA;
               ctx.fillStyle = color;
-              ctx.fillRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
-              ctx.globalAlpha = 1;
-              // 枠線（視認性向上）
+              ctx.fillRect(x + 2, y + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+              ctx.globalAlpha = 0.6;
               ctx.strokeStyle = color;
               ctx.lineWidth = 2;
-              ctx.globalAlpha = 0.7;
-              ctx.strokeRect(x + 1, y + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+              ctx.strokeRect(x + 2, y + 2, CELL_SIZE - 4, CELL_SIZE - 4);
               ctx.globalAlpha = 1;
             }
           }
         }
 
-        // Draw current piece
+        // Draw current piece (glossy)
         const pieceCells = getPieceCellsForRender(currentPiece);
-        const pieceColor = CELL_COLORS[PIECE_CELL[currentPiece.type]] || '#fff';
+        const cellType = PIECE_CELL[currentPiece.type];
         for (const [r, c] of pieceCells) {
           if (r >= 0 && r < 20 && c >= 0 && c < 10) {
-            drawTileCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, pieceColor);
+            drawGlossyCell(ctx, c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE, cellType);
           }
         }
       }
 
-      // Grid lines
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-      ctx.lineWidth = 1;
-      for (let r = 0; r <= 20; r++) {
-        ctx.beginPath();
-        ctx.moveTo(0, r * CELL_SIZE);
-        ctx.lineTo(BOARD_WIDTH, r * CELL_SIZE);
-        ctx.stroke();
-      }
-      for (let c = 0; c <= 10; c++) {
-        ctx.beginPath();
-        ctx.moveTo(c * CELL_SIZE, 0);
-        ctx.lineTo(c * CELL_SIZE, BOARD_HEIGHT);
-        ctx.stroke();
-      }
-
-      // Hard drop light effects
+      // Hard drop light effects (cyan glow)
       for (const eff of effectsRef.current.hardDrops) {
         const elapsed = now - eff.startTime;
         const progress = Math.min(1, elapsed / eff.duration);
-        const alpha = (1 - progress) * 0.7;
-        const glowSize = progress * 10;
+        const alpha = (1 - progress) * 0.8;
+        const glowSize = progress * 12;
 
-        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+        ctx.shadowColor = 'rgba(0, 200, 255, 0.9)';
         ctx.shadowBlur = glowSize;
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillStyle = `rgba(150, 230, 255, ${alpha})`;
         for (const [r, c] of eff.cells) {
           if (r >= 0 && r < 20 && c >= 0 && c < 10) {
-            ctx.fillRect(
-              c * CELL_SIZE + 2,
-              r * CELL_SIZE + 2,
-              CELL_SIZE - 4,
-              CELL_SIZE - 4,
-            );
+            ctx.fillRect(c * CELL_SIZE + 2, r * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
           }
         }
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
       }
 
-      // パーティクル描画（ハードドロップバースト）
+      // Particles
       for (const p of effectsRef.current.particles) {
         const elapsed = now - p.born;
         const t = elapsed / p.maxLife;
@@ -333,12 +416,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         const alpha = 1 - t;
         const dt = elapsed / 1000;
         const px = p.x + p.vx * dt;
-        const py = p.y + p.vy * dt + 200 * dt * dt; // 重力
+        const py = p.y + p.vy * dt + 200 * dt * dt;
 
         ctx.globalAlpha = alpha;
         ctx.fillStyle = p.color;
         ctx.shadowColor = p.color;
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.arc(px, py, p.size * (1 - t * 0.5), 0, Math.PI * 2);
         ctx.fill();
@@ -347,11 +430,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
         ctx.shadowBlur = 0;
       }
 
-      // Incoming attack indicator
+      // Incoming attack indicator (right side, red bar)
       if (incomingAttack > 0) {
         const barHeight = Math.min(incomingAttack, 20) * CELL_SIZE;
-        ctx.fillStyle = 'rgba(231, 76, 60, 0.6)';
-        ctx.fillRect(0, BOARD_HEIGHT - barHeight, 5, barHeight);
+        const gradient = ctx.createLinearGradient(BOARD_WIDTH - 6, BOARD_HEIGHT - barHeight, BOARD_WIDTH - 6, BOARD_HEIGHT);
+        gradient.addColorStop(0, 'rgba(255, 80, 50, 0.9)');
+        gradient.addColorStop(1, 'rgba(255, 30, 30, 0.9)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(BOARD_WIDTH - 6, BOARD_HEIGHT - barHeight, 5, barHeight);
+        // Glow
+        ctx.shadowColor = 'rgba(255, 50, 30, 0.7)';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(BOARD_WIDTH - 6, BOARD_HEIGHT - barHeight, 5, barHeight);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
       }
 
       // Clean up expired effects
@@ -370,14 +462,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(({ board, currentPiece, i
 
     animFrameRef.current = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [board, currentPiece, incomingAttack, isGameOver]);
+  }, [board, currentPiece, incomingAttack, isGameOver, collisionCells]);
 
   return (
     <canvas
       ref={canvasRef}
       width={BOARD_WIDTH}
       height={BOARD_HEIGHT}
-      style={{ border: '2px solid #3a3a5c', borderRadius: 4 }}
+      style={{ display: 'block', borderRadius: 4 }}
     />
   );
 });

@@ -239,6 +239,7 @@ export class ServerGameRoom {
         playerCount: this.playerOrder.length,
         durationSec,
         winnerId: winnerFingerprint,
+        isSolo: this.isSolo,
         players: ranking.map(r => ({
           fingerprint: this.fingerprints.get(r.socketId) ?? r.socketId,
           nickname: r.nickname,

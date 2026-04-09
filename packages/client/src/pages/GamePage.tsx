@@ -71,21 +71,20 @@ function getPieceCellsForRender(piece: Piece): [number, number][] {
 }
 
 export default function GamePage({ roomState, gameReadyData, nickname, isSolo, gameOverData, goToResult, quitGame }: Props) {
-  // ===== ローカルエンジン（表示＆操作の主体） =====
+  // ===== ローカルエンジン =====
   const localEngineRef = useRef<GameEngine | null>(null);
   const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [localState, setLocalState] = useState<GameState | null>(null);
 
-  // ===== サーバーから受信した権威的データ（スコア・攻撃用） =====
+  // ===== サーバーデータ =====
   const serverScoreRef = useRef(0);
   const serverLinesRef = useRef(0);
   const serverLevelRef = useRef(1);
   const serverComboRef = useRef(-1);
   const serverB2bRef = useRef(false);
-  // ローカルボード→サーバー同期用カウンター
   const boardSyncCounterRef = useRef(0);
 
-  // 画面振動エフェクト
+  // 画面振動
   const [screenShake, setScreenShake] = useState(false);
 
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
@@ -102,6 +101,16 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const gameOverFiredRef = useRef(false);
   const [showStamps, setShowStamps] = useState(true);
   const [receivedStamp, setReceivedStamp] = useState<{text: string; style: string; nickname: string} | null>(null);
+
+  // Speed Up notification
+  const [showSpeedUp, setShowSpeedUp] = useState(false);
+  const lastSpeedUpLevelRef = useRef(0);
+
+  // Collision cells for game over highlight
+  const [collisionCells, setCollisionCells] = useState<[number, number][]>([]);
+
+  // Garbage indicator
+  const [garbageStock, setGarbageStock] = useState(0);
 
   const STAMPS = [
     { id: 'ganbare', text: '頑張れ！', style: 'pop' },
@@ -131,16 +140,24 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   useEffect(() => { soundManager.load(); }, []);
 
-  // ゲーム終了判定：ローカルエンジンのgameOver OR game:overイベント（サーバーからの勝敗通知）
-  // ※ state_ackのisGameOverは使わない（サーバーエンジンとのタイミングズレで早すぎるゲームオーバーを防止）
   const isGameOver = !!localState?.isGameOver || !!gameOverData;
   const isWinner = !isSolo && gameOverData?.winnerId === socket.id;
+
+  // ===== Speed Up check =====
+  useEffect(() => {
+    const lines = serverLinesRef.current;
+    const level = Math.floor(lines / 10) + 1;
+    if (level > lastSpeedUpLevelRef.current && lastSpeedUpLevelRef.current > 0 && lines > 0) {
+      setShowSpeedUp(true);
+      setTimeout(() => setShowSpeedUp(false), 2200);
+    }
+    lastSpeedUpLevelRef.current = level;
+  }, [localState?.linesCleared]);
 
   // ===== Countdown + ローカルエンジン初期化 =====
   useEffect(() => {
     if (!gameReadyData) return;
 
-    // seedでローカルエンジンを作成（サーバーと同じseed → 同じピース順）
     if (gameReadyData.seed != null && !localEngineRef.current) {
       localEngineRef.current = new GameEngine({ seed: gameReadyData.seed });
       setLocalState(localEngineRef.current.getState());
@@ -165,7 +182,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           setGameActive(true);
           soundManager.playBGM('play');
 
-          // ローカルtick開始（重力・ロック・表示更新）
           if (localEngineRef.current) {
             localTickRef.current = setInterval(() => {
               const engine = localEngineRef.current;
@@ -177,7 +193,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                   canvasRef.current.triggerLineClear(result.clearedRows);
                 }
               }
-              // ローカル表示更新（スコア等はサーバーの権威的データ）
               const state = engine.getState();
               setLocalState({
                 ...state,
@@ -189,8 +204,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                 isGameOver: state.isGameOver,
               });
 
-              // ローカルボードを定期的にサーバーに送信（約200ms間隔 = 12フレームごと）
-              // → 他プレイヤーのミニボードに正確なローカル状態が表示される
               boardSyncCounterRef.current++;
               if (boardSyncCounterRef.current % 12 === 0) {
                 socket.emit('board:sync', {
@@ -219,18 +232,14 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   // ===== Socket events =====
   useEffect(() => {
-    // サーバーからの状態確認（スコア・攻撃・勝敗判定のみ使用。表示はローカル）
     const onStateAck = (data: any) => {
       serverScoreRef.current = data.score ?? 0;
       serverLinesRef.current = data.linesCleared ?? 0;
       serverLevelRef.current = data.level ?? 1;
       serverComboRef.current = data.combo ?? -1;
       serverB2bRef.current = data.b2bActive ?? false;
-      // 表示更新はローカルtickに任せる（setLocalState呼ばない）
-      // ※ isGameOverはローカルエンジンとgame:overイベントで判定（state_ackは使わない）
     };
 
-    // 他プレイヤーのボード（ミニボード表示用のみ。勝敗判定に使わない）
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
       if (data.socketId === socket.id) return;
       setOtherBoards(prev => {
@@ -240,15 +249,17 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       });
     };
 
-    // おじゃま受信（ローカルエンジンに即時反映）
     const onAttackReceive = (data: { lines: number; holes?: number[] }) => {
       setIncomingAttack(prev => prev + data.lines);
+      setGarbageStock(prev => prev + data.lines);
       soundManager.playSE('garbage');
       if (localEngineRef.current) {
         localEngineRef.current.receiveGarbage(data.lines, data.holes);
       }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);
+      // Garbage stock clears after lines are placed
+      setTimeout(() => setGarbageStock(prev => Math.max(0, prev - data.lines)), 800);
     };
 
     const onPlayerKO = (data: { socketId: string; rank: number }) => {
@@ -276,48 +287,56 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     };
   }, []);
 
-  // ゲームオーバー検知 → サーバーに通知
+  // ゲームオーバー検知
   useEffect(() => {
     if (isGameOver && !gameOverFiredRef.current) {
       gameOverFiredRef.current = true;
       soundManager.playSE('gameover');
       soundManager.fadeOutBGM(1200);
       if (localEngineRef.current) localEngineRef.current.pause();
-      // ローカルエンジンがゲームオーバーを検出 → サーバーに通知
+
+      // Detect collision cells for highlight
+      if (localState?.isGameOver && localState?.board && localState?.currentPiece) {
+        const piece = localState.currentPiece;
+        const board = localState.board;
+        const cells = getPieceCellsForRender(piece);
+        const collisions: [number, number][] = [];
+        for (const [r, c] of cells) {
+          if (r >= 0 && r < 20 && c >= 0 && c < 10 && board[r][c] !== 0) {
+            collisions.push([r, c]);
+          }
+        }
+        setCollisionCells(collisions);
+      }
+
       if (localState?.isGameOver) {
         socket.emit('game:localGameOver');
       }
     }
   }, [isGameOver, localState?.isGameOver]);
 
-  // ===== Send action: ローカル即時反映 + サーバーに送信 =====
+  // ===== Send action =====
   const sendAction = useCallback((action: Action) => {
     seqRef.current++;
-    // サーバーにも送信（攻撃・スコア・勝敗判定）
     socket.emit('input:action', { action, seq: seqRef.current });
 
-    // SE即時再生
     if (action === 'hard_drop') soundManager.playSE('harddrop');
     else if (action === 'rotate_cw' || action === 'rotate_ccw') soundManager.playSE('rotate');
     else if (action === 'hold') soundManager.playSE('hold');
 
-    // ローカルエンジンに即時反映
     const engine = localEngineRef.current;
     if (engine) {
-      // ハードドロップエフェクト + 画面振動
       if (action === 'hard_drop' && canvasRef.current) {
         const ghost = engine.getGhostPiece();
         if (ghost) {
           canvasRef.current.triggerHardDrop(getPieceCellsForRender(ghost));
         }
-        // 画面振動
         setScreenShake(true);
         setTimeout(() => setScreenShake(false), 150);
       }
 
       const result = engine.applyAction(action);
 
-      // ライン消去SE＋エフェクト
       if (result && result.linesCleared > 0) {
         soundManager.playLineClear(result.linesCleared);
         if (canvasRef.current) {
@@ -325,7 +344,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         }
       }
 
-      // 即座に表示更新
       const state = engine.getState();
       setLocalState({
         ...state,
@@ -339,7 +357,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     }
   }, []);
 
-  // ポーズ切替（ソロのみ）
   const togglePause = useCallback(() => {
     if (!isSolo || !gameActive || isGameOver) return;
     const engine = localEngineRef.current;
@@ -416,197 +433,305 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
 
   return (
-    <div style={{
-      display: 'flex',
-      gap: 16,
-      padding: 16,
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      position: 'relative',
-    }}>
-      {/* Top right buttons */}
-      <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
-        <button onClick={openMenu} style={{
-          background: 'rgba(30,30,60,0.8)', border: '1px solid #3a3a5c', borderRadius: 8,
-          padding: '6px 12px', color: '#fff', fontSize: 14, cursor: 'pointer',
-        }}>MENU</button>
-        <button onClick={() => { const m = soundManager.toggleMute(); setMuted(m); }} style={{
-          background: 'rgba(30,30,60,0.8)', border: '1px solid #3a3a5c', borderRadius: 8,
-          padding: '6px 12px', color: '#fff', fontSize: 18, cursor: 'pointer',
-        }} title={muted ? 'サウンドON' : 'ミュート'}>
-          {muted ? '🔇' : '🔊'}
-        </button>
+    <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
+      {/* Water caustics background */}
+      <div className="water-bg">
+        <div className="water-caustics-layer">
+          <div className="caustic" />
+          <div className="caustic" />
+          <div className="caustic" />
+          <div className="caustic" />
+          <div className="caustic" />
+        </div>
+        <div className="water-rays" />
       </div>
 
-      {/* Menu overlay */}
-      {showMenu && !showOptions && !showQuitConfirm && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 250 }}>
-          <div style={{ background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12, padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h2 style={{ textAlign: 'center', margin: 0, fontSize: 20 }}>メニュー</h2>
-            <button className="btn-primary" onClick={closeMenu} style={{ padding: '12px', fontSize: 16 }}>プレイ中画面に戻る</button>
-            <button className="btn-secondary" onClick={() => setShowOptions(true)} style={{ padding: '12px', fontSize: 16 }}>オプション</button>
-            <button className="btn-danger" onClick={() => setShowQuitConfirm(true)} style={{ padding: '12px', fontSize: 16 }}>終了する</button>
-          </div>
+      {/* Main game layout */}
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        display: 'flex',
+        gap: 16,
+        padding: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+      }}>
+        {/* Top right buttons */}
+        <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
+          <button onClick={openMenu} style={{
+            background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.4)', borderRadius: 8,
+            padding: '6px 14px', color: '#00ccff', fontSize: 13, cursor: 'pointer', fontWeight: 700,
+            letterSpacing: 1, textShadow: '0 0 6px rgba(0,200,255,0.4)',
+          }}>MENU</button>
+          <button onClick={() => { const m = soundManager.toggleMute(); setMuted(m); }} style={{
+            background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.4)', borderRadius: 8,
+            padding: '6px 12px', color: '#00ccff', fontSize: 18, cursor: 'pointer',
+          }} title={muted ? 'サウンドON' : 'ミュート'}>
+            {muted ? '🔇' : '🔊'}
+          </button>
         </div>
-      )}
 
-      {/* Quit confirmation */}
-      {showQuitConfirm && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 260 }}>
-          <div style={{ background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12, padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14, textAlign: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>終了してもよろしいですか？</h2>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
-              <button className="btn-danger" onClick={() => { setShowQuitConfirm(false); setShowMenu(false); quitGame(); }} style={{ padding: '12px 28px', fontSize: 16 }}>はい</button>
-              <button className="btn-secondary" onClick={() => setShowQuitConfirm(false)} style={{ padding: '12px 28px', fontSize: 16 }}>いいえ</button>
+        {/* Menu overlay */}
+        {showMenu && !showOptions && !showQuitConfirm && (
+          <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 250 }}>
+            <div className="t99-frame" style={{ padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <h2 style={{ textAlign: 'center', margin: 0, fontSize: 20, color: '#00ccff', letterSpacing: 2, textShadow: '0 0 10px rgba(0,200,255,0.4)' }}>MENU</h2>
+              <button className="btn-primary" onClick={closeMenu} style={{ padding: '12px', fontSize: 16 }}>プレイ中画面に戻る</button>
+              <button className="btn-secondary" onClick={() => setShowOptions(true)} style={{ padding: '12px', fontSize: 16 }}>オプション</button>
+              <button className="btn-danger" onClick={() => setShowQuitConfirm(true)} style={{ padding: '12px', fontSize: 16 }}>終了する</button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Options overlay */}
-      {showMenu && showOptions && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 250 }}>
-          <div style={{ background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 12, padding: 28, minWidth: 360, maxHeight: '80vh', overflowY: 'auto' }}>
-            <h2 style={{ textAlign: 'center', margin: '0 0 16px', fontSize: 20 }}>オプション</h2>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
-                <span style={{ minWidth: 80 }}>BGM音量</span>
-                <input type="range" min={0} max={100} value={bgmVol} onChange={e => handleBgmVol(Number(e.target.value))} style={{ flex: 1 }} />
-                <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{bgmVol}%</span>
-              </label>
+        {/* Quit confirmation */}
+        {showQuitConfirm && (
+          <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 260 }}>
+            <div className="t99-frame" style={{ padding: 32, minWidth: 280, display: 'flex', flexDirection: 'column', gap: 14, textAlign: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: '#fff' }}>終了してもよろしいですか？</h2>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
+                <button className="btn-danger" onClick={() => { setShowQuitConfirm(false); setShowMenu(false); quitGame(); }} style={{ padding: '12px 28px', fontSize: 16 }}>はい</button>
+                <button className="btn-secondary" onClick={() => setShowQuitConfirm(false)} style={{ padding: '12px 28px', fontSize: 16 }}>いいえ</button>
+              </div>
             </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
-                <span style={{ minWidth: 80 }}>SE音量</span>
-                <input type="range" min={0} max={100} value={seVol} onChange={e => handleSeVol(Number(e.target.value))} style={{ flex: 1 }} />
-                <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{seVol}%</span>
-              </label>
+          </div>
+        )}
+
+        {/* Options overlay */}
+        {showMenu && showOptions && (
+          <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 250 }}>
+            <div className="t99-frame" style={{ padding: 28, minWidth: 360, maxHeight: '80vh', overflowY: 'auto' }}>
+              <h2 style={{ textAlign: 'center', margin: '0 0 16px', fontSize: 20, color: '#00ccff', letterSpacing: 2 }}>OPTIONS</h2>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
+                  <span style={{ minWidth: 80 }}>BGM音量</span>
+                  <input type="range" min={0} max={100} value={bgmVol} onChange={e => handleBgmVol(Number(e.target.value))} style={{ flex: 1 }} />
+                  <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{bgmVol}%</span>
+                </label>
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#aaa', fontSize: 14 }}>
+                  <span style={{ minWidth: 80 }}>SE音量</span>
+                  <input type="range" min={0} max={100} value={seVol} onChange={e => handleSeVol(Number(e.target.value))} style={{ flex: 1 }} />
+                  <span style={{ minWidth: 36, textAlign: 'right', color: '#fff' }}>{seVol}%</span>
+                </label>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ color: '#00ccff', fontSize: 13, marginBottom: 8, fontWeight: 700, letterSpacing: 1 }}>KEY BINDINGS</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <tbody>
+                    {([
+                      ['move_left', '左移動'], ['move_right', '右移動'], ['soft_drop', 'ソフトドロップ'],
+                      ['hard_drop', 'ハードドロップ'], ['rotate_cw', '右回転'], ['rotate_ccw', '左回転'], ['hold', 'ホールド'],
+                    ] as [Action, string][]).map(([action, label]) => {
+                      const currentKey = Object.entries(keyMap).find(([, v]) => v === action)?.[0] ?? '-';
+                      const isRebinding = rebindAction === action;
+                      return (
+                        <tr key={action} style={{ borderBottom: '1px solid rgba(0,150,200,0.2)' }}>
+                          <td style={{ padding: '6px 4px', color: '#ccc' }}>{label}</td>
+                          <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                            <button onClick={() => setRebindAction(isRebinding ? null : action)} style={{
+                              background: isRebinding ? '#4a6cf7' : 'rgba(0,30,60,0.8)', color: '#fff', border: '1px solid rgba(0,200,255,0.3)',
+                              borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer', minWidth: 80,
+                            }}>{isRebinding ? 'キーを押して...' : displayKey(currentKey)}</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <button className="btn-secondary" onClick={() => setShowOptions(false)} style={{ width: '100%', padding: '10px', fontSize: 15 }}>戻る</button>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ color: '#aaa', fontSize: 14, marginBottom: 8 }}>ボタン割り当て</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <tbody>
-                  {([
-                    ['move_left', '左移動'], ['move_right', '右移動'], ['soft_drop', 'ソフトドロップ'],
-                    ['hard_drop', 'ハードドロップ'], ['rotate_cw', '右回転'], ['rotate_ccw', '左回転'], ['hold', 'ホールド'],
-                  ] as [Action, string][]).map(([action, label]) => {
-                    const currentKey = Object.entries(keyMap).find(([, v]) => v === action)?.[0] ?? '-';
-                    const isRebinding = rebindAction === action;
-                    return (
-                      <tr key={action} style={{ borderBottom: '1px solid #2a2a4a' }}>
-                        <td style={{ padding: '6px 4px', color: '#ccc' }}>{label}</td>
-                        <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                          <button onClick={() => setRebindAction(isRebinding ? null : action)} style={{
-                            background: isRebinding ? '#4a6cf7' : '#2a2a4a', color: '#fff', border: 'none',
-                            borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer', minWidth: 80,
-                          }}>{isRebinding ? 'キーを押して...' : displayKey(currentKey)}</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          </div>
+        )}
+
+        {/* Countdown overlay */}
+        {countdown && (
+          <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 200 }}>
+            <div style={{
+              fontSize: 96, fontWeight: 900,
+              color: countdown === 'GO!' ? '#00ff88' : '#00ccff',
+              textShadow: countdown === 'GO!'
+                ? '0 0 40px rgba(0,255,136,0.8), 0 0 80px rgba(0,255,136,0.4)'
+                : '0 0 40px rgba(0,200,255,0.8), 0 0 80px rgba(0,200,255,0.4)',
+              letterSpacing: 8,
+            }}>
+              {countdown}
             </div>
-            <button className="btn-secondary" onClick={() => setShowOptions(false)} style={{ width: '100%', padding: '10px', fontSize: 15 }}>戻る</button>
+          </div>
+        )}
+
+        {/* Left side: Hold + Score + Chat */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120 }}>
+          <HoldBox holdPiece={localState?.holdPiece ?? null} holdUsed={localState?.holdUsed ?? false} />
+
+          {/* Score Panel */}
+          <div className="t99-frame t99-score-panel" style={{ position: 'relative' }}>
+            <div className="t99-frame-label">SCORE</div>
+            <div className="score-row" style={{ marginTop: 6 }}>
+              <div className="score-label">SCORE</div>
+              <div className="score-value">{(localState?.score ?? 0).toLocaleString()}</div>
+            </div>
+            <div className="score-row">
+              <div className="score-label">LINES</div>
+              <div className="score-value">{localState?.linesCleared ?? 0}</div>
+            </div>
+            <div className="score-row">
+              <div className="score-label">LEVEL</div>
+              <div className="score-value">{localState?.level ?? 1}</div>
+            </div>
+            <div className="score-row">
+              <div className="score-label">COMBO</div>
+              <div className="score-value">{Math.max(0, localState?.combo ?? 0)}</div>
+            </div>
+            {localState?.b2bActive && <div className="t99-b2b">B2B</div>}
+          </div>
+
+          <ChatBox roomId={roomState?.room?.id ?? ''} />
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowStamps(!showStamps)} style={{
+              width: '100%', fontSize: 12, padding: '6px',
+              background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.3)',
+              borderRadius: 6, color: '#00ccff', fontWeight: 700, cursor: 'pointer',
+            }}>STAMP</button>
+            {showStamps && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: 0, right: 0,
+                background: 'rgba(0,10,30,0.95)', border: '1px solid rgba(0,200,255,0.3)',
+                borderRadius: 8, padding: 8, display: 'grid', gridTemplateColumns: '1fr 1fr',
+                gap: 6, marginBottom: 4, zIndex: 50,
+              }}>
+                {STAMPS.map(s => (
+                  <button key={s.id} onClick={() => sendStamp(s)} style={{
+                    background: s.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,30,60,0.8)',
+                    color: '#fff', border: s.style === 'pop' ? 'none' : '1px solid rgba(0,200,255,0.2)',
+                    borderRadius: 6, padding: '6px 4px',
+                    fontSize: s.style === 'pop' ? 13 : 12, cursor: 'pointer',
+                    fontFamily: s.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                    fontWeight: s.style === 'pop' ? 700 : 400,
+                  }}>{s.text}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Countdown overlay */}
-      {countdown && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 200 }}>
-          <div style={{ fontSize: 96, fontWeight: 900, color: countdown === 'GO!' ? '#4caf50' : '#fff', textShadow: '0 0 40px rgba(74,108,247,0.8)' }}>
-            {countdown}
-          </div>
-        </div>
-      )}
-
-      {/* Left side: Hold + Score + Chat */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120 }}>
-        <HoldBox holdPiece={localState?.holdPiece ?? null} holdUsed={localState?.holdUsed ?? false} />
-        <div className="card" style={{ padding: 12, fontSize: 14 }}>
-          <div style={{ marginBottom: 4 }}>Score: <strong style={{ fontSize: 16 }}>{localState?.score ?? 0}</strong></div>
-          <div style={{ marginBottom: 4 }}>Lines: <strong style={{ fontSize: 16 }}>{localState?.linesCleared ?? 0}</strong></div>
-          <div>Combo: <strong>{Math.max(0, localState?.combo ?? 0)}</strong></div>
-          {localState?.b2bActive && <div style={{ color: '#f0a000', fontWeight: 700, marginTop: 4 }}>B2B</div>}
-        </div>
-        <ChatBox roomId={roomState?.room?.id ?? ''} />
+        {/* Center: Main board with T99 frame */}
         <div style={{ position: 'relative' }}>
-          <button className="btn-secondary" onClick={() => setShowStamps(!showStamps)} style={{ width: '100%', fontSize: 13, padding: '6px' }}>スタンプ</button>
-          {showStamps && (
-            <div style={{ position: 'absolute', bottom: '100%', left: 0, right: 0, background: '#16162a', border: '1px solid #3a3a5c', borderRadius: 8, padding: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 4, zIndex: 50 }}>
-              {STAMPS.map(s => (
-                <button key={s.id} onClick={() => sendStamp(s)} style={{
-                  background: s.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : '#2a2a4a',
-                  color: '#fff', border: 'none', borderRadius: 6, padding: '6px 4px',
-                  fontSize: s.style === 'pop' ? 13 : 12, cursor: 'pointer',
-                  fontFamily: s.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
-                  fontWeight: s.style === 'pop' ? 700 : 400,
-                }}>{s.text}</button>
+          <div className="t99-main-frame" style={{
+            animation: screenShake ? 'screenShake 0.15s ease-out' : 'none',
+            position: 'relative',
+          }}>
+            {/* Garbage stock indicator (left side) */}
+            <div className="garbage-indicator" style={{ height: 20 * 30 /* BOARD_HEIGHT */ }}>
+              <div
+                className={`garbage-indicator-fill ${garbageStock > 0 ? 'animating' : ''}`}
+                style={{ height: `${Math.min(100, (garbageStock / 20) * 100)}%` }}
+              />
+            </div>
+
+            <GameCanvas
+              ref={canvasRef}
+              board={localState?.board ?? null}
+              currentPiece={localState?.currentPiece ?? null}
+              incomingAttack={incomingAttack}
+              isGameOver={isGameOver}
+              collisionCells={collisionCells}
+            />
+
+            {/* Speed Up notification */}
+            {showSpeedUp && (
+              <div className="speed-up-overlay">
+                <div className="speed-up-text">SPEED UP</div>
+              </div>
+            )}
+          </div>
+
+          {/* Game Over overlay */}
+          {isGameOver && (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.6)', borderRadius: 8, gap: 24, zIndex: 10,
+            }}>
+              {isWinner ? (
+                <div style={{
+                  fontSize: 44, fontWeight: 900, color: '#ffd700',
+                  textShadow: '0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.4)',
+                  letterSpacing: 6, animation: 'pulse 1s ease-in-out infinite',
+                }}>WINNER!!</div>
+              ) : isSolo ? (
+                <div style={{
+                  fontSize: 40, fontWeight: 900, color: '#ff4444',
+                  textShadow: '0 0 30px rgba(255,68,68,0.8), 0 0 60px rgba(255,68,68,0.4)',
+                  letterSpacing: 4,
+                }}>GAME OVER</div>
+              ) : (
+                <div style={{
+                  fontSize: 40, fontWeight: 900, color: '#ff4444',
+                  textShadow: '0 0 30px rgba(255,68,68,0.8), 0 0 60px rgba(255,68,68,0.4)',
+                  letterSpacing: 4,
+                }}>YOU LOSE</div>
+              )}
+              <button onClick={goToResult} style={{
+                padding: '14px 36px', fontSize: 18, fontWeight: 700,
+                animation: 'pulse 1.5s ease-in-out infinite',
+                background: 'linear-gradient(180deg, #0088ff, #0055cc)',
+                color: '#fff', border: '2px solid rgba(0,200,255,0.5)',
+                borderRadius: 8, cursor: 'pointer',
+                boxShadow: '0 0 20px rgba(0,136,255,0.4)',
+                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+              }}>リザルトを見る</button>
+            </div>
+          )}
+        </div>
+
+        {/* Right side: NEXT + Opponents */}
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+          <div>
+            <NextQueue nextQueue={localState?.nextQueue ?? []} />
+          </div>
+          {otherPlayers.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {otherPlayers.map(p => (
+                <MiniBoard
+                  key={p.socketId}
+                  board={otherBoards.get(p.socketId) ?? emptyMiniBoard()}
+                  nickname={p.nickname}
+                  isKO={koList.has(p.socketId)}
+                />
               ))}
             </div>
           )}
         </div>
-      </div>
 
-      {/* Center: Main board */}
-      <div style={{
-        position: 'relative',
-        animation: screenShake ? 'screenShake 0.15s ease-out' : 'none',
-      }}>
-        <GameCanvas
-          ref={canvasRef}
-          board={localState?.board ?? null}
-          currentPiece={localState?.currentPiece ?? null}
-          incomingAttack={incomingAttack}
-          isGameOver={isGameOver}
-        />
-        {isGameOver && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', borderRadius: 4, gap: 24 }}>
-            {isWinner ? (
-              <div style={{ fontSize: 44, fontWeight: 900, color: '#ffd700', textShadow: '0 0 40px rgba(255,215,0,0.8), 0 0 80px rgba(255,215,0,0.4)', letterSpacing: 6, animation: 'pulse 1s ease-in-out infinite' }}>WINNER!!</div>
-            ) : isSolo ? (
-              <div style={{ fontSize: 40, fontWeight: 900, color: '#e74c3c', textShadow: '0 0 30px rgba(231,76,60,0.6)', letterSpacing: 4 }}>GAME OVER</div>
-            ) : (
-              <div style={{ fontSize: 40, fontWeight: 900, color: '#e74c3c', textShadow: '0 0 30px rgba(231,76,60,0.6)', letterSpacing: 4 }}>YOU LOSE</div>
-            )}
-            <button className="btn-primary" onClick={goToResult} style={{ padding: '14px 36px', fontSize: 18, fontWeight: 700, animation: 'pulse 1.5s ease-in-out infinite' }}>リザルトを見る</button>
-          </div>
-        )}
-      </div>
-
-      {/* Right side: NEXT + Opponents */}
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ fontSize: 14, color: '#fff', marginBottom: 6, textAlign: 'center', fontWeight: 700, letterSpacing: 2 }}>NEXT</div>
-          <NextQueue nextQueue={localState?.nextQueue ?? []} />
-        </div>
-        {otherPlayers.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {otherPlayers.map(p => (
-              <MiniBoard
-                key={p.socketId}
-                board={otherBoards.get(p.socketId) ?? emptyMiniBoard()}
-                nickname={p.nickname}
-                isKO={koList.has(p.socketId)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Received stamp（メインウインドウに被らないよう左上に配置） */}
-      {receivedStamp && (
-        <div style={{ position: 'fixed', top: '20%', left: 40, zIndex: 400, pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out' }}>
-          <div style={{ padding: '16px 32px', borderRadius: 16, background: receivedStamp.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(22,22,42,0.95)', border: '2px solid rgba(255,255,255,0.3)', textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>{receivedStamp.nickname}</div>
-            <div style={{ fontSize: receivedStamp.style === 'pop' ? 28 : 22, fontWeight: receivedStamp.style === 'pop' ? 900 : 400, color: '#fff', fontFamily: receivedStamp.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
-              {receivedStamp.text}
+        {/* Received stamp */}
+        {receivedStamp && (
+          <div style={{
+            position: 'fixed', top: '20%', left: 40, zIndex: 400,
+            pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out',
+          }}>
+            <div style={{
+              padding: '16px 32px', borderRadius: 16,
+              background: receivedStamp.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,15,40,0.95)',
+              border: '2px solid rgba(0,200,255,0.3)', textAlign: 'center',
+              boxShadow: '0 0 30px rgba(0,0,0,0.5)',
+            }}>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>{receivedStamp.nickname}</div>
+              <div style={{
+                fontSize: receivedStamp.style === 'pop' ? 28 : 22,
+                fontWeight: receivedStamp.style === 'pop' ? 900 : 400,
+                color: '#fff',
+                fontFamily: receivedStamp.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              }}>
+                {receivedStamp.text}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

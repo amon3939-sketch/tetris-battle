@@ -9,6 +9,7 @@ body {
   background: #0a0a1a;
   color: #e0e0e0;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 #root {
@@ -138,6 +139,265 @@ input:focus {
   margin-top: 8px;
 }
 
+/* ========== Water Caustics Background ========== */
+.water-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #001a33 0%, #002244 30%, #001a3a 60%, #000d1f 100%);
+}
+
+.water-bg::before,
+.water-bg::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+}
+
+.water-bg::before {
+  background:
+    radial-gradient(ellipse 600px 400px at 30% 40%, rgba(0, 180, 255, 0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 500px 350px at 70% 60%, rgba(0, 150, 220, 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 400px 300px at 50% 30%, rgba(0, 200, 255, 0.05) 0%, transparent 70%);
+  animation: causticsDrift1 12s ease-in-out infinite;
+}
+
+.water-bg::after {
+  background:
+    radial-gradient(ellipse 550px 380px at 60% 50%, rgba(0, 160, 240, 0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 450px 320px at 25% 65%, rgba(0, 120, 200, 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 380px 280px at 75% 25%, rgba(0, 180, 220, 0.05) 0%, transparent 70%);
+  animation: causticsDrift2 15s ease-in-out infinite;
+}
+
+.water-caustics-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.water-caustics-layer .caustic {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0;
+}
+
+.water-caustics-layer .caustic:nth-child(1) {
+  width: 300px; height: 200px;
+  top: 10%; left: 20%;
+  background: rgba(0, 200, 255, 0.12);
+  animation: causticPulse 8s ease-in-out infinite;
+}
+.water-caustics-layer .caustic:nth-child(2) {
+  width: 400px; height: 250px;
+  top: 40%; left: 60%;
+  background: rgba(0, 150, 255, 0.10);
+  animation: causticPulse 10s ease-in-out 2s infinite;
+}
+.water-caustics-layer .caustic:nth-child(3) {
+  width: 350px; height: 220px;
+  top: 60%; left: 30%;
+  background: rgba(0, 180, 240, 0.08);
+  animation: causticPulse 12s ease-in-out 4s infinite;
+}
+.water-caustics-layer .caustic:nth-child(4) {
+  width: 280px; height: 180px;
+  top: 20%; left: 70%;
+  background: rgba(0, 220, 255, 0.09);
+  animation: causticPulse 9s ease-in-out 1s infinite;
+}
+.water-caustics-layer .caustic:nth-child(5) {
+  width: 320px; height: 200px;
+  top: 75%; left: 50%;
+  background: rgba(0, 140, 220, 0.07);
+  animation: causticPulse 11s ease-in-out 3s infinite;
+}
+
+/* Light rays from above */
+.water-rays {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+.water-rays::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: 10%;
+  width: 30%;
+  height: 140%;
+  background: linear-gradient(180deg, rgba(100, 200, 255, 0.3) 0%, transparent 80%);
+  transform: skewX(-15deg);
+  animation: rayShift1 18s ease-in-out infinite;
+}
+
+.water-rays::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  right: 15%;
+  width: 25%;
+  height: 140%;
+  background: linear-gradient(180deg, rgba(80, 180, 255, 0.25) 0%, transparent 75%);
+  transform: skewX(10deg);
+  animation: rayShift2 22s ease-in-out infinite;
+}
+
+@keyframes causticsDrift1 {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  33% { transform: translate(3%, -2%) rotate(1deg); }
+  66% { transform: translate(-2%, 3%) rotate(-1deg); }
+}
+
+@keyframes causticsDrift2 {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  33% { transform: translate(-3%, 2%) rotate(-1deg); }
+  66% { transform: translate(2%, -3%) rotate(1deg); }
+}
+
+@keyframes causticPulse {
+  0%, 100% { opacity: 0; transform: scale(1) translate(0, 0); }
+  20% { opacity: 0.8; }
+  50% { opacity: 1; transform: scale(1.2) translate(10px, -5px); }
+  80% { opacity: 0.6; transform: scale(0.9) translate(-5px, 10px); }
+}
+
+@keyframes rayShift1 {
+  0%, 100% { transform: skewX(-15deg) translateX(0); opacity: 1; }
+  50% { transform: skewX(-10deg) translateX(5%); opacity: 0.7; }
+}
+
+@keyframes rayShift2 {
+  0%, 100% { transform: skewX(10deg) translateX(0); opacity: 1; }
+  50% { transform: skewX(15deg) translateX(-5%); opacity: 0.6; }
+}
+
+/* ========== TETRIS 99 Style Frames ========== */
+.t99-frame {
+  position: relative;
+  border: 2px solid rgba(0, 200, 255, 0.6);
+  border-radius: 6px;
+  background: rgba(0, 10, 30, 0.85);
+  box-shadow:
+    0 0 8px rgba(0, 180, 255, 0.3),
+    inset 0 0 15px rgba(0, 80, 150, 0.15);
+}
+
+.t99-frame::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 220, 255, 0.15);
+  pointer-events: none;
+}
+
+.t99-frame-label {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #004466, #002233);
+  border: 1px solid rgba(0, 200, 255, 0.5);
+  border-radius: 4px;
+  padding: 1px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00ccff;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(0, 200, 255, 0.5);
+  z-index: 1;
+}
+
+.t99-main-frame {
+  position: relative;
+  border: 3px solid rgba(0, 200, 255, 0.7);
+  border-radius: 8px;
+  background: rgba(0, 10, 30, 0.9);
+  box-shadow:
+    0 0 20px rgba(0, 180, 255, 0.25),
+    0 0 40px rgba(0, 120, 255, 0.1),
+    inset 0 0 20px rgba(0, 80, 150, 0.2);
+  padding: 4px;
+}
+
+/* ========== Garbage Indicator ========== */
+.garbage-indicator {
+  position: absolute;
+  left: -14px;
+  bottom: 4px;
+  width: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(0, 30, 60, 0.6);
+  border: 1px solid rgba(0, 150, 200, 0.3);
+}
+
+.garbage-indicator-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(0deg, #ff3333, #ff6644);
+  transition: height 0.3s ease-out;
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(255, 50, 50, 0.6);
+}
+
+.garbage-indicator-fill.animating {
+  animation: garbagePulse 0.5s ease-out;
+}
+
+@keyframes garbagePulse {
+  0% { box-shadow: 0 0 8px rgba(255, 50, 50, 0.6); }
+  50% { box-shadow: 0 0 20px rgba(255, 50, 50, 0.9), 0 0 30px rgba(255, 80, 50, 0.5); }
+  100% { box-shadow: 0 0 8px rgba(255, 50, 50, 0.6); }
+}
+
+/* ========== Speed Up Notification ========== */
+.speed-up-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.speed-up-text {
+  font-size: 36px;
+  font-weight: 900;
+  color: #ff4444;
+  text-shadow:
+    0 0 10px rgba(255, 68, 68, 0.8),
+    0 0 30px rgba(255, 68, 68, 0.5),
+    0 0 60px rgba(255, 0, 0, 0.3),
+    2px 2px 0 #880000;
+  letter-spacing: 4px;
+  animation: speedUpAnim 2s ease-out forwards;
+  white-space: nowrap;
+}
+
+@keyframes speedUpAnim {
+  0% { transform: scale(0.3); opacity: 0; }
+  15% { transform: scale(1.3); opacity: 1; }
+  25% { transform: scale(1); }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: translateY(-20px); opacity: 0; }
+}
+
+/* ========== Animations ========== */
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.05); opacity: 0.85; }
@@ -157,4 +417,59 @@ input:focus {
   60% { transform: translate(2px, -1px); }
   75% { transform: translate(-1px, 1px); }
   100% { transform: translate(0, 0); }
+}
+
+@keyframes garbageRise {
+  0% { transform: translateY(30px); opacity: 0.5; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Score info styling for T99 */
+.t99-score-panel {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.t99-score-panel .score-label {
+  color: rgba(0, 200, 255, 0.7);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 1px;
+}
+
+.t99-score-panel .score-value {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(0, 200, 255, 0.3);
+  font-variant-numeric: tabular-nums;
+}
+
+.t99-score-panel .score-row {
+  margin-bottom: 8px;
+}
+
+.t99-score-panel .score-row:last-child {
+  margin-bottom: 0;
+}
+
+.t99-b2b {
+  display: inline-block;
+  background: linear-gradient(135deg, #ff8800, #ffaa00);
+  color: #000;
+  font-weight: 900;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  text-shadow: none;
+  box-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
+}
+
+/* ========== Game Over Collision Highlight ========== */
+@keyframes collisionBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }

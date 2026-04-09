@@ -73,13 +73,14 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       socket.emit('room:list', roomManager.getRoomList());
     });
 
-    // ランキング取得
-    socket.on('ranking:get', () => {
+    // ランキング取得（mode: 'solo' | 'multi' | 'all'）
+    socket.on('ranking:get', (params?: { mode?: 'solo' | 'multi' | 'all' }) => {
       try {
-        const ranking = getRanking(db, 20);
-        socket.emit('ranking:data', ranking);
+        const mode = params?.mode ?? 'all';
+        const ranking = getRanking(db, 10, mode);
+        socket.emit('ranking:data', { mode, ranking });
       } catch (e) {
-        socket.emit('ranking:data', []);
+        socket.emit('ranking:data', { mode: params?.mode ?? 'all', ranking: [] });
       }
     });
 

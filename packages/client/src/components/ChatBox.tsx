@@ -66,18 +66,17 @@ export default function ChatBox({ roomId }: Props) {
   };
 
   return (
-    <div style={{
-      background: '#16162a',
-      border: '1px solid #2a2a4a',
-      borderRadius: 8,
+    <div className="t99-frame" style={{
       display: 'flex',
       flexDirection: 'column',
-      height: 240,
+      height: 200,
       width: '100%',
       maxWidth: 360,
+      position: 'relative',
     }}>
-      <div style={{ fontSize: 12, color: '#aaa', padding: '6px 10px', borderBottom: '1px solid #2a2a4a' }}>
-        チャット
+      <div className="t99-frame-label">CHAT</div>
+      <div style={{ fontSize: 11, color: 'rgba(0,200,255,0.5)', padding: '8px 10px 4px', borderBottom: '1px solid rgba(0,150,200,0.15)' }}>
+        &nbsp;
       </div>
       <div
         ref={listRef}
@@ -137,7 +136,7 @@ export default function ChatBox({ roomId }: Props) {
           );
         })}
       </div>
-      <div style={{ display: 'flex', borderTop: '1px solid #2a2a4a' }}>
+      <div style={{ display: 'flex', borderTop: '1px solid rgba(0,150,200,0.2)' }}>
         <input
           ref={inputRef}
           maxLength={140}
@@ -153,12 +152,16 @@ export default function ChatBox({ roomId }: Props) {
             borderRadius: 0,
             background: 'transparent',
             padding: '8px 10px',
+            color: '#e0e0e0',
           }}
         />
         <button
-          className="btn-primary"
           onClick={handleSend}
-          style={{ borderRadius: 0, padding: '8px 12px', fontSize: 13 }}
+          style={{
+            borderRadius: 0, padding: '8px 12px', fontSize: 12,
+            background: 'rgba(0,100,200,0.5)', color: '#00ccff',
+            border: 'none', cursor: 'pointer', fontWeight: 700,
+          }}
         >
           送信
         </button>

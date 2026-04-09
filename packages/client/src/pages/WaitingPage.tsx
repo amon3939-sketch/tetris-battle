@@ -24,6 +24,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
   if (!roomState) return null;
 
   const isHost = roomState.hostSocketId === socket.id;
+  const playersNeeded = (roomState.maxPlayers ?? 2) - roomState.players.length;
 
   const handleStart = () => {
     socket.emit('game:start');
@@ -42,94 +43,186 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
   };
 
   return (
-    <div className="page">
-      <h1>{roomState.room.name}</h1>
+    <div style={{ position: 'relative', width: '100%', minHeight: '100vh', overflow: 'auto' }}>
+      {/* Water background */}
+      <div className="water-bg">
+        <div className="water-caustics-layer">
+          <div className="caustic" /><div className="caustic" /><div className="caustic" />
+          <div className="caustic" /><div className="caustic" />
+        </div>
+        <div className="water-rays" />
+      </div>
 
-      <div className="card">
-        <h3 style={{ marginBottom: 12, fontSize: 16 }}>
-          参加者 ({roomState.players.length}/{roomState.maxPlayers ?? '?'}人)
-        </h3>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {roomState.players.map(p => (
-            <li
-              key={p.socketId}
-              style={{
-                padding: '8px 12px',
-                borderBottom: '1px solid #2a2a4a',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <span>{p.nickname}</span>
-              {p.socketId === roomState.hostSocketId && (
-                <span style={{
-                  fontSize: 11,
-                  background: '#f0a000',
-                  color: '#000',
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  fontWeight: 700,
+      <div style={{
+        position: 'relative', zIndex: 1,
+        maxWidth: 600, margin: '0 auto', padding: '40px 20px',
+      }}>
+        {/* Room Title */}
+        <div style={{ textAlign: 'center', marginBottom: 30 }}>
+          <h1 style={{
+            fontSize: 32, fontWeight: 900, letterSpacing: 4,
+            color: '#00ccff', margin: 0,
+            textShadow: '0 0 15px rgba(0,200,255,0.5), 0 2px 4px rgba(0,0,0,0.8)',
+          }}>{roomState.room.name}</h1>
+          <div style={{
+            fontSize: 12, color: 'rgba(0,200,255,0.4)', letterSpacing: 3, marginTop: 6,
+          }}>WAITING FOR PLAYERS</div>
+        </div>
+
+        {/* Player List */}
+        <div className="t99-frame" style={{ padding: 0, marginBottom: 20, overflow: 'hidden', position: 'relative' }}>
+          <div className="t99-frame-label">PLAYERS</div>
+          <div style={{
+            padding: '14px 16px 6px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          }}>
+            <span style={{ color: 'rgba(0,200,255,0.6)', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
+              {roomState.players.length} / {roomState.maxPlayers ?? '?'}
+            </span>
+            {playersNeeded > 0 && (
+              <span style={{ color: '#ffaa00', fontSize: 11, fontWeight: 600 }}>
+                あと {playersNeeded}人
+              </span>
+            )}
+          </div>
+          <div style={{ padding: '0 8px 8px' }}>
+            {roomState.players.map((p, i) => (
+              <div
+                key={p.socketId}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 12px',
+                  borderBottom: i < roomState.players.length - 1 ? '1px solid rgba(0,150,200,0.1)' : 'none',
+                }}
+              >
+                {/* Player icon */}
+                <div style={{
+                  width: 32, height: 32, borderRadius: 6,
+                  background: p.socketId === roomState.hostSocketId
+                    ? 'linear-gradient(135deg, #ffaa00, #ff6600)' : 'linear-gradient(135deg, #0088ff, #0055cc)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 900, color: '#fff',
+                  boxShadow: p.socketId === roomState.hostSocketId
+                    ? '0 0 10px rgba(255,170,0,0.4)' : '0 0 10px rgba(0,136,255,0.3)',
                 }}>
-                  HOST
+                  {p.nickname.charAt(0).toUpperCase()}
+                </div>
+                <span style={{ color: '#fff', fontWeight: 600, fontSize: 15, flex: 1 }}>
+                  {p.nickname}
                 </span>
-              )}
-              {p.socketId === socket.id && (
-                <span style={{ fontSize: 12, color: '#4a6cf7' }}>(自分)</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {isHost && (
-          <>
-            <button className="btn-primary" onClick={handleStart}>
-              ゲーム開始
-            </button>
-            <button className="btn-secondary" onClick={() => setShowSettings(!showSettings)}>
-              ルーム設定
-            </button>
-          </>
-        )}
-        <button className="btn-danger" onClick={handleLeave}>
-          退出
-        </button>
-      </div>
-
-      {/* ホスト設定変更パネル */}
-      {showSettings && isHost && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 15, marginBottom: 12 }}>ルーム設定変更</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-              <span style={{ color: '#aaa', minWidth: 80 }}>上限人数</span>
-              <select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}
-                style={{ padding: '6px 10px' }}>
-                {[2, 3, 4, 5, 6, 7, 8].map(n => (
-                  <option key={n} value={n}>{n}人</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-              <span style={{ color: '#aaa', minWidth: 80 }}>パスワード</span>
-              <input
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="空欄で解除"
-                style={{ flex: 1 }}
-              />
-            </label>
-            <button className="btn-primary" onClick={handleUpdateSettings}
-              style={{ alignSelf: 'flex-end', padding: '6px 16px', fontSize: 13 }}>
-              適用
-            </button>
+                {p.socketId === roomState.hostSocketId && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 900, letterSpacing: 1,
+                    background: 'linear-gradient(135deg, #ffaa00, #ff8800)',
+                    color: '#000', padding: '3px 8px', borderRadius: 4,
+                  }}>HOST</span>
+                )}
+                {p.socketId === socket.id && (
+                  <span style={{ fontSize: 11, color: '#00ccff', fontWeight: 600 }}>YOU</span>
+                )}
+              </div>
+            ))}
+            {/* Empty slots */}
+            {Array.from({ length: playersNeeded }).map((_, i) => (
+              <div key={`empty-${i}`} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 12px',
+                borderBottom: i < playersNeeded - 1 ? '1px solid rgba(0,150,200,0.1)' : 'none',
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 6,
+                  background: 'rgba(0,30,60,0.5)', border: '2px dashed rgba(0,200,255,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, color: 'rgba(0,200,255,0.2)',
+                }}>?</div>
+                <span style={{ color: 'rgba(0,200,255,0.3)', fontSize: 13, fontStyle: 'italic' }}>
+                  待機中...
+                </span>
+              </div>
+            ))}
           </div>
         </div>
-      )}
 
-      <ChatBox roomId={roomState.room.id} />
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+          {isHost && (
+            <>
+              <button onClick={handleStart} style={{
+                flex: 1, padding: '14px 24px', fontSize: 16, fontWeight: 900,
+                background: playersNeeded > 0
+                  ? 'rgba(0,30,60,0.5)' : 'linear-gradient(180deg, #00cc88, #008855)',
+                color: '#fff',
+                border: playersNeeded > 0
+                  ? '2px solid rgba(0,200,255,0.2)' : '2px solid rgba(0,255,136,0.5)',
+                borderRadius: 8, cursor: playersNeeded > 0 ? 'not-allowed' : 'pointer',
+                letterSpacing: 2, opacity: playersNeeded > 0 ? 0.5 : 1,
+                boxShadow: playersNeeded > 0 ? 'none' : '0 0 20px rgba(0,200,100,0.3)',
+                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+              }}>
+                GAME START
+              </button>
+              <button onClick={() => setShowSettings(!showSettings)} style={{
+                padding: '14px 20px', fontSize: 13, fontWeight: 700,
+                background: 'rgba(0,30,60,0.8)', color: '#00ccff',
+                border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8, cursor: 'pointer',
+              }}>
+                SETTINGS
+              </button>
+            </>
+          )}
+          <button onClick={handleLeave} style={{
+            padding: '14px 20px', fontSize: 13, fontWeight: 700,
+            background: 'rgba(80,20,20,0.6)', color: '#ff6666',
+            border: '1px solid rgba(255,100,100,0.3)', borderRadius: 8, cursor: 'pointer',
+          }}>
+            LEAVE
+          </button>
+        </div>
+
+        {/* Host Settings Panel */}
+        {showSettings && isHost && (
+          <div className="t99-frame" style={{ padding: 20, marginBottom: 20, position: 'relative' }}>
+            <div className="t99-frame-label">SETTINGS</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
+              <div>
+                <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>MAX PLAYERS</div>
+                <select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}
+                  style={{
+                    width: '100%', background: 'rgba(0,15,40,0.6)',
+                    border: '1px solid rgba(0,200,255,0.3)', borderRadius: 6,
+                    padding: '8px 12px', color: '#fff', fontSize: 14, outline: 'none',
+                  }}>
+                  {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                    <option key={n} value={n}>{n}人</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>PASSWORD</div>
+                <input
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="空欄で解除"
+                  style={{
+                    width: '100%', background: 'rgba(0,15,40,0.6)',
+                    border: '1px solid rgba(0,200,255,0.3)', borderRadius: 6,
+                    padding: '8px 12px', color: '#fff', fontSize: 14, outline: 'none',
+                  }}
+                />
+              </div>
+              <button onClick={handleUpdateSettings} style={{
+                alignSelf: 'flex-end', padding: '8px 20px', fontSize: 13, fontWeight: 700,
+                background: 'linear-gradient(180deg, #0088ff, #0055cc)',
+                color: '#fff', border: '2px solid rgba(0,150,255,0.5)',
+                borderRadius: 6, cursor: 'pointer',
+              }}>APPLY</button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat */}
+        <ChatBox roomId={roomState.room.id} />
+      </div>
     </div>
   );
 }

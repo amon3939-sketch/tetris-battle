@@ -19,6 +19,7 @@ interface RankingEntry {
   winRate: number;
   bestScore: number;
   totalLines: number;
+  bestLines: number;
 }
 
 interface Props {
@@ -28,24 +29,22 @@ interface Props {
 
 export default function LobbyPage({ nickname, setNickname }: Props) {
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
-  const [ranking, setRanking] = useState<RankingEntry[]>([]);
+  const [soloRanking, setSoloRanking] = useState<RankingEntry[]>([]);
+  const [multiRanking, setMultiRanking] = useState<RankingEntry[]>([]);
+  const [rankingTab, setRankingTab] = useState<'solo' | 'multi'>('solo');
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showPassword, setShowPassword] = useState<string | null>(null);
   const [connected, setConnected] = useState(socket.connected);
 
-  // 接続 + ニックネーム設定
   useEffect(() => {
-    // サウンドのプリロード
     soundManager.load();
 
-    // ブラウザの自動再生ポリシー対策: ユーザー操作で初回BGM再生
     const startBGMOnInteraction = () => {
       soundManager.playBGM('lobby');
       document.removeEventListener('click', startBGMOnInteraction);
       document.removeEventListener('keydown', startBGMOnInteraction);
     };
-    // まず試みる（ブラウザが許可していれば鳴る）
     soundManager.playBGM('lobby');
     document.addEventListener('click', startBGMOnInteraction);
     document.addEventListener('keydown', startBGMOnInteraction);
@@ -57,14 +56,17 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
         nickname: name,
         fingerprint: generateFingerprint(),
       });
-      // ランキング取得
-      socket.emit('ranking:get');
+      socket.emit('ranking:get', { mode: 'solo' });
+      socket.emit('ranking:get', { mode: 'multi' });
     };
 
     const onDisconnect = () => setConnected(false);
     const onRoomList = (list: RoomListItem[]) => setRooms(list);
     const onRoomError = (data: { code: string; message: string }) => setError(data.message);
-    const onRanking = (data: RankingEntry[]) => setRanking(data);
+    const onRanking = (data: { mode: string; ranking: RankingEntry[] }) => {
+      if (data.mode === 'solo') setSoloRanking(data.ranking);
+      else if (data.mode === 'multi') setMultiRanking(data.ranking);
+    };
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
@@ -114,159 +116,266 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
     socket.emit('room:join', { roomId, password });
   };
 
-  return (
-    <div className="page">
-      <h1>Tetris Battle</h1>
+  const currentRanking = rankingTab === 'solo' ? soloRanking : multiRanking;
 
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <label style={{ color: '#aaa', whiteSpace: 'nowrap' }}>ニックネーム:</label>
-        <input
-          value={nickname}
-          onChange={e => handleNicknameChange(e.target.value)}
-          placeholder="名前を入力"
-          style={{ flex: 1, maxWidth: 240 }}
-        />
-        <span style={{ fontSize: 12, color: connected ? '#4caf50' : '#e74c3c' }}>
-          {connected ? '接続中' : '切断'}
-        </span>
+  return (
+    <div style={{ position: 'relative', width: '100%', minHeight: '100vh', overflow: 'auto' }}>
+      {/* Water background */}
+      <div className="water-bg">
+        <div className="water-caustics-layer">
+          <div className="caustic" /><div className="caustic" /><div className="caustic" />
+          <div className="caustic" /><div className="caustic" />
+        </div>
+        <div className="water-rays" />
       </div>
 
-      {/* 対戦用URL */}
-      <ShareUrlBox />
+      <div style={{
+        position: 'relative', zIndex: 1,
+        maxWidth: 900, margin: '0 auto', padding: '30px 20px',
+      }}>
+        {/* Title */}
+        <div style={{ textAlign: 'center', marginBottom: 30 }}>
+          <h1 style={{
+            fontSize: 48, fontWeight: 900, letterSpacing: 8,
+            color: '#00ccff',
+            textShadow: '0 0 20px rgba(0,200,255,0.6), 0 0 60px rgba(0,200,255,0.3), 0 2px 4px rgba(0,0,0,0.8)',
+            margin: 0,
+          }}>TETRIS BATTLE</h1>
+          <div style={{
+            fontSize: 13, color: 'rgba(0,200,255,0.5)', letterSpacing: 4,
+            marginTop: 4,
+          }}>ONLINE MULTIPLAYER</div>
+        </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
-            + 新しいルームを作成
-          </button>
-          <button
+        {/* Nickname + Connection */}
+        <div className="t99-frame" style={{
+          padding: '14px 18px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ color: 'rgba(0,200,255,0.7)', fontSize: 12, fontWeight: 700, letterSpacing: 1, whiteSpace: 'nowrap' }}>
+            PLAYER NAME
+          </span>
+          <input
+            value={nickname}
+            onChange={e => handleNicknameChange(e.target.value)}
+            placeholder="名前を入力"
             style={{
-              padding: '8px 20px',
-              background: 'linear-gradient(135deg, #4caf50, #2e7d32)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: 'pointer',
+              flex: 1, maxWidth: 280,
+              background: 'rgba(0,15,40,0.6)', border: '1px solid rgba(0,200,255,0.3)',
+              borderRadius: 6, padding: '8px 12px', color: '#fff', fontSize: 15,
+              outline: 'none',
             }}
-            onClick={() => {
-              if (!connected) return;
-              socket.emit('game:solo');
-            }}
-          >
-            🎮 1人プレイ
+          />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: connected ? '#00ff88' : '#ff4444',
+              boxShadow: connected ? '0 0 8px rgba(0,255,136,0.6)' : '0 0 8px rgba(255,68,68,0.6)',
+            }} />
+            <span style={{ fontSize: 12, color: connected ? '#00ff88' : '#ff4444', fontWeight: 600 }}>
+              {connected ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        {/* Share URL */}
+        <ShareUrlBox />
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          <button onClick={() => {
+            if (!connected) return;
+            socket.emit('game:solo');
+          }} style={{
+            padding: '14px 32px', fontSize: 16, fontWeight: 900,
+            background: 'linear-gradient(180deg, #00cc88, #008855)',
+            color: '#fff', border: '2px solid rgba(0,255,136,0.5)',
+            borderRadius: 8, cursor: 'pointer', letterSpacing: 2,
+            boxShadow: '0 0 20px rgba(0,200,100,0.3)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+          }}>
+            SOLO PLAY
+          </button>
+          <button onClick={() => setShowCreate(true)} style={{
+            padding: '14px 32px', fontSize: 16, fontWeight: 900,
+            background: 'linear-gradient(180deg, #0088ff, #0055cc)',
+            color: '#fff', border: '2px solid rgba(0,150,255,0.5)',
+            borderRadius: 8, cursor: 'pointer', letterSpacing: 2,
+            boxShadow: '0 0 20px rgba(0,136,255,0.3)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+          }}>
+            CREATE ROOM
+          </button>
+          <button onClick={() => socket.emit('room:list')} style={{
+            padding: '14px 20px', fontSize: 14, fontWeight: 700,
+            background: 'rgba(0,30,60,0.8)', color: '#00ccff',
+            border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8,
+            cursor: 'pointer',
+          }}>
+            REFRESH
           </button>
         </div>
-        <button className="btn-secondary" onClick={() => socket.emit('room:list')}>
-          更新
-        </button>
-      </div>
 
-      {error && <div className="error-msg">{error}</div>}
+        {error && <div style={{ color: '#ff4444', fontSize: 13, marginBottom: 12, textShadow: '0 0 8px rgba(255,68,68,0.4)' }}>{error}</div>}
 
-      <div className="card">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #3a3a5c', textAlign: 'left' }}>
-              <th style={{ padding: '8px 4px' }}>ルーム名</th>
-              <th style={{ padding: '8px 4px' }}>人数</th>
-              <th style={{ padding: '8px 4px' }}>パス</th>
-              <th style={{ padding: '8px 4px' }}>状態</th>
-              <th style={{ padding: '8px 4px' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rooms.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ padding: 20, textAlign: 'center', color: '#666' }}>
-                  ルームがありません
-                </td>
-              </tr>
-            )}
-            {rooms.map(room => (
-              <tr key={room.id} style={{ borderBottom: '1px solid #2a2a4a' }}>
-                <td style={{ padding: '8px 4px' }}>{room.name}</td>
-                <td style={{ padding: '8px 4px' }}>{room.playerCount}/{room.maxPlayers}</td>
-                <td style={{ padding: '8px 4px' }}>{room.hasPassword ? '🔒' : '-'}</td>
-                <td style={{ padding: '8px 4px', fontSize: 12 }}>
-                  {room.status === 'waiting' ? '待機中' : 'プレイ中'}
-                </td>
-                <td style={{ padding: '8px 4px' }}>
-                  <button
-                    className="btn-primary"
-                    onClick={() => handleJoin(room)}
-                    disabled={room.status === 'playing' || room.playerCount >= room.maxPlayers}
-                    style={{ padding: '4px 12px', fontSize: 13 }}
-                  >
-                    参加
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ランキング */}
-      <div style={{ marginTop: 20 }}>
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>🏆 スコアランキング</h2>
-        <div className="card">
+        {/* Room List */}
+        <div className="t99-frame" style={{ padding: 0, marginBottom: 24, overflow: 'hidden', position: 'relative' }}>
+          <div className="t99-frame-label">ROOMS</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #3a3a5c', textAlign: 'left' }}>
-                <th style={{ padding: '8px 4px', width: 40 }}>#</th>
-                <th style={{ padding: '8px 4px' }}>プレイヤー</th>
-                <th style={{ padding: '8px 4px' }}>勝利</th>
-                <th style={{ padding: '8px 4px' }}>試合</th>
-                <th style={{ padding: '8px 4px' }}>勝率</th>
-                <th style={{ padding: '8px 4px' }}>最高スコア</th>
-                <th style={{ padding: '8px 4px' }}>総ライン</th>
+              <tr style={{ background: 'rgba(0,50,100,0.3)' }}>
+                <th style={thStyle}>ルーム名</th>
+                <th style={{ ...thStyle, width: 80 }}>人数</th>
+                <th style={{ ...thStyle, width: 50 }}>鍵</th>
+                <th style={{ ...thStyle, width: 80 }}>状態</th>
+                <th style={{ ...thStyle, width: 70 }}></th>
               </tr>
             </thead>
             <tbody>
-              {ranking.length === 0 && (
+              {rooms.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ padding: 16, textAlign: 'center', color: '#666' }}>
-                    まだランキングデータがありません
+                  <td colSpan={5} style={{ padding: 30, textAlign: 'center', color: 'rgba(0,200,255,0.4)', fontSize: 14 }}>
+                    ルームがありません
                   </td>
                 </tr>
               )}
-              {ranking.map((entry, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #2a2a4a' }}>
-                  <td style={{ padding: '6px 4px', fontWeight: 700, color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#aaa' }}>
-                    {i + 1}
+              {rooms.map(room => (
+                <tr key={room.id} style={{ borderBottom: '1px solid rgba(0,150,200,0.15)' }}>
+                  <td style={tdStyle}>
+                    <span style={{ fontWeight: 600, color: '#fff' }}>{room.name}</span>
                   </td>
-                  <td style={{ padding: '6px 4px' }}>{entry.nickname}</td>
-                  <td style={{ padding: '6px 4px', color: '#4caf50', fontWeight: 700 }}>{entry.totalWins}</td>
-                  <td style={{ padding: '6px 4px' }}>{entry.totalMatches}</td>
-                  <td style={{ padding: '6px 4px', color: '#4a6cf7' }}>{(entry.winRate * 100).toFixed(0)}%</td>
-                  <td style={{ padding: '6px 4px', color: '#f0a000', fontWeight: 700 }}>{entry.bestScore.toLocaleString()}</td>
-                  <td style={{ padding: '6px 4px', color: '#aaa' }}>{entry.totalLines}</td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      color: room.playerCount >= room.maxPlayers ? '#ff4444' : '#00ccff',
+                      fontWeight: 700,
+                    }}>
+                      {room.playerCount}/{room.maxPlayers}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
+                    {room.hasPassword ? <span style={{ color: '#ffaa00' }}>🔒</span> : <span style={{ color: 'rgba(0,200,255,0.3)' }}>-</span>}
+                  </td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, letterSpacing: 1,
+                      color: room.status === 'waiting' ? '#00ff88' : '#ffaa00',
+                    }}>
+                      {room.status === 'waiting' ? 'WAITING' : 'PLAYING'}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    <button
+                      onClick={() => handleJoin(room)}
+                      disabled={room.status === 'playing' || room.playerCount >= room.maxPlayers}
+                      style={{
+                        padding: '5px 14px', fontSize: 12, fontWeight: 700,
+                        background: room.status === 'playing' || room.playerCount >= room.maxPlayers
+                          ? 'rgba(0,30,60,0.5)' : 'linear-gradient(180deg, #0088ff, #0055cc)',
+                        color: '#fff', border: '1px solid rgba(0,150,255,0.4)',
+                        borderRadius: 5, cursor: 'pointer',
+                        opacity: room.status === 'playing' || room.playerCount >= room.maxPlayers ? 0.4 : 1,
+                      }}
+                    >
+                      JOIN
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Ranking */}
+        <div className="t99-frame" style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
+          <div className="t99-frame-label">RANKING</div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', background: 'rgba(0,30,60,0.4)' }}>
+            <button onClick={() => setRankingTab('solo')} style={{
+              flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 700, letterSpacing: 2,
+              background: rankingTab === 'solo' ? 'rgba(0,100,200,0.3)' : 'transparent',
+              color: rankingTab === 'solo' ? '#00ccff' : 'rgba(0,200,255,0.4)',
+              border: 'none', borderBottom: rankingTab === 'solo' ? '2px solid #00ccff' : '2px solid transparent',
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}>SOLO</button>
+            <button onClick={() => setRankingTab('multi')} style={{
+              flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 700, letterSpacing: 2,
+              background: rankingTab === 'multi' ? 'rgba(0,100,200,0.3)' : 'transparent',
+              color: rankingTab === 'multi' ? '#00ccff' : 'rgba(0,200,255,0.4)',
+              border: 'none', borderBottom: rankingTab === 'multi' ? '2px solid #00ccff' : '2px solid transparent',
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}>MULTI</button>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(0,50,100,0.2)' }}>
+                <th style={{ ...thStyle, width: 36 }}>#</th>
+                <th style={thStyle}>プレイヤー</th>
+                {rankingTab === 'multi' && <th style={{ ...thStyle, width: 60 }}>勝利</th>}
+                {rankingTab === 'multi' && <th style={{ ...thStyle, width: 60 }}>勝率</th>}
+                <th style={{ ...thStyle, width: 100 }}>最高スコア</th>
+                <th style={{ ...thStyle, width: 80 }}>
+                  {rankingTab === 'solo' ? '最高ライン' : '総ライン'}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentRanking.length === 0 && (
+                <tr>
+                  <td colSpan={rankingTab === 'multi' ? 6 : 4} style={{ padding: 30, textAlign: 'center', color: 'rgba(0,200,255,0.4)', fontSize: 14 }}>
+                    まだ記録がありません
+                  </td>
+                </tr>
+              )}
+              {currentRanking.map((entry, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid rgba(0,150,200,0.1)' }}>
+                  <td style={{
+                    ...tdStyle, fontWeight: 900, fontSize: 16, textAlign: 'center',
+                    color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : 'rgba(0,200,255,0.5)',
+                    textShadow: i === 0 ? '0 0 10px rgba(255,215,0,0.5)' : 'none',
+                  }}>
+                    {i + 1}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#fff', fontWeight: 600 }}>{entry.nickname}</td>
+                  {rankingTab === 'multi' && (
+                    <td style={{ ...tdStyle, color: '#00ff88', fontWeight: 700 }}>{entry.totalWins}</td>
+                  )}
+                  {rankingTab === 'multi' && (
+                    <td style={{ ...tdStyle, color: '#00ccff' }}>{(entry.winRate * 100).toFixed(0)}%</td>
+                  )}
+                  <td style={{ ...tdStyle, color: '#ffaa00', fontWeight: 700 }}>
+                    {entry.bestScore.toLocaleString()}
+                  </td>
+                  <td style={{ ...tdStyle, color: 'rgba(0,200,255,0.6)' }}>
+                    {rankingTab === 'solo' ? entry.bestLines : entry.totalLines}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modals */}
+        {showCreate && <CreateRoomModal onClose={() => setShowCreate(false)} nickname={nickname} />}
+        {showPassword && <PasswordModal roomId={showPassword} onClose={() => setShowPassword(null)} onJoin={handlePasswordJoin} />}
       </div>
-
-      {showCreate && (
-        <CreateRoomModal
-          onClose={() => setShowCreate(false)}
-          nickname={nickname}
-        />
-      )}
-
-      {showPassword && (
-        <PasswordModal
-          roomId={showPassword}
-          onClose={() => setShowPassword(null)}
-          onJoin={handlePasswordJoin}
-        />
-      )}
     </div>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  padding: '10px 12px', textAlign: 'left',
+  color: 'rgba(0,200,255,0.7)', fontSize: 11, fontWeight: 700,
+  letterSpacing: 1, textTransform: 'uppercase' as const,
+  borderBottom: '1px solid rgba(0,150,200,0.2)',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 12px', fontSize: 14,
+};
 
 function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname: string }) {
   const [name, setName] = useState(`${nickname || 'Guest'}の部屋`);
@@ -283,28 +392,30 @@ function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname:
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h2>新しいルームを作成</h2>
-        <label>
-          <span>ルーム名</span>
-          <input value={name} onChange={e => setName(e.target.value)} />
-        </label>
-        <label>
-          <span>最大人数</span>
-          <select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 100 }} onClick={onClose}>
+      <div className="t99-frame" style={{ padding: 28, minWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ color: '#00ccff', fontSize: 18, marginBottom: 20, textAlign: 'center', letterSpacing: 2, textShadow: '0 0 10px rgba(0,200,255,0.4)' }}>
+          CREATE ROOM
+        </h2>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>ROOM NAME</div>
+          <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>MAX PLAYERS</div>
+          <select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))} style={inputStyle}>
             {[2, 3, 4, 5, 6, 7, 8].map(n => (
               <option key={n} value={n}>{n}人</option>
             ))}
           </select>
-        </label>
-        <label>
-          <span>パスワード（任意）</span>
-          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="未入力で公開" />
-        </label>
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>キャンセル</button>
-          <button className="btn-primary" onClick={handleCreate}>作成</button>
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>PASSWORD (OPTIONAL)</div>
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="未入力で公開" style={inputStyle} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnSecondary}>CANCEL</button>
+          <button onClick={handleCreate} style={btnPrimary}>CREATE</button>
         </div>
       </div>
     </div>
@@ -323,32 +434,28 @@ function ShareUrlBox() {
   };
 
   return (
-    <div className="card" style={{ padding: '10px 12px', fontSize: 13 }}>
+    <div className="t99-frame" style={{ padding: '10px 14px', marginBottom: 20, fontSize: 13 }}>
       {isLocal ? (
-        <div style={{ color: '#aaa', fontSize: 12 }}>
+        <div style={{ color: 'rgba(0,200,255,0.4)', fontSize: 12 }}>
           ローカル環境で実行中です。離れた場所の相手と対戦するにはクラウドにデプロイしてください。
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#aaa', whiteSpace: 'nowrap' }}>対戦用URL（相手に共有）:</span>
+          <span style={{ color: 'rgba(0,200,255,0.6)', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>SHARE URL</span>
           <code style={{
-            flex: 1,
-            background: '#0a0a1a',
-            padding: '4px 8px',
-            borderRadius: 4,
-            color: '#4a6cf7',
-            fontSize: 13,
-            wordBreak: 'break-all',
-            userSelect: 'all',
+            flex: 1, background: 'rgba(0,15,40,0.6)', padding: '4px 10px', borderRadius: 4,
+            color: '#00ccff', fontSize: 12, wordBreak: 'break-all', userSelect: 'all',
+            border: '1px solid rgba(0,150,200,0.2)',
           }}>
             {window.location.origin}
           </code>
-          <button
-            className="btn-secondary"
-            style={{ padding: '4px 10px', fontSize: 12 }}
-            onClick={handleCopy}
-          >
-            {copied ? '✓' : 'コピー'}
+          <button onClick={handleCopy} style={{
+            padding: '4px 12px', fontSize: 11, fontWeight: 700,
+            background: copied ? 'rgba(0,200,100,0.3)' : 'rgba(0,60,120,0.5)',
+            color: copied ? '#00ff88' : '#00ccff',
+            border: '1px solid rgba(0,200,255,0.3)', borderRadius: 4, cursor: 'pointer',
+          }}>
+            {copied ? 'COPIED' : 'COPY'}
           </button>
         </div>
       )}
@@ -360,23 +467,45 @@ function PasswordModal({ roomId, onClose, onJoin }: { roomId: string; onClose: (
   const [pw, setPw] = useState('');
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h2>パスワードを入力</h2>
-        <label>
-          <span>パスワード</span>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 100 }} onClick={onClose}>
+      <div className="t99-frame" style={{ padding: 28, minWidth: 320 }} onClick={e => e.stopPropagation()}>
+        <h2 style={{ color: '#00ccff', fontSize: 18, marginBottom: 20, textAlign: 'center', letterSpacing: 2 }}>
+          PASSWORD
+        </h2>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>ENTER PASSWORD</div>
           <input
             type="password"
             value={pw}
             onChange={e => setPw(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && onJoin(roomId, pw)}
+            style={inputStyle}
           />
-        </label>
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>キャンセル</button>
-          <button className="btn-primary" onClick={() => onJoin(roomId, pw)}>参加</button>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnSecondary}>CANCEL</button>
+          <button onClick={() => onJoin(roomId, pw)} style={btnPrimary}>JOIN</button>
         </div>
       </div>
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', background: 'rgba(0,15,40,0.6)',
+  border: '1px solid rgba(0,200,255,0.3)', borderRadius: 6,
+  padding: '8px 12px', color: '#fff', fontSize: 14, outline: 'none',
+};
+
+const btnPrimary: React.CSSProperties = {
+  padding: '10px 24px', fontSize: 14, fontWeight: 700,
+  background: 'linear-gradient(180deg, #0088ff, #0055cc)',
+  color: '#fff', border: '2px solid rgba(0,150,255,0.5)',
+  borderRadius: 6, cursor: 'pointer', letterSpacing: 1,
+};
+
+const btnSecondary: React.CSSProperties = {
+  padding: '10px 24px', fontSize: 14, fontWeight: 700,
+  background: 'rgba(0,30,60,0.8)', color: 'rgba(0,200,255,0.7)',
+  border: '1px solid rgba(0,200,255,0.3)', borderRadius: 6, cursor: 'pointer',
+};
