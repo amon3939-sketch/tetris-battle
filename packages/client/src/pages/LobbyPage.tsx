@@ -153,7 +153,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
           <span style={{ color: 'rgba(0,200,255,0.7)', fontSize: 12, fontWeight: 700, letterSpacing: 1, whiteSpace: 'nowrap' }}>
-            PLAYER NAME
+            ニックネーム
           </span>
           <input
             value={nickname}
@@ -196,7 +196,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             boxShadow: '0 0 20px rgba(0,200,100,0.3)',
             textShadow: '0 1px 3px rgba(0,0,0,0.5)',
           }}>
-            SOLO PLAY
+            1人プレイ
           </button>
           <button onClick={() => setShowCreate(true)} style={{
             padding: '14px 32px', fontSize: 16, fontWeight: 900,
@@ -206,7 +206,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             boxShadow: '0 0 20px rgba(0,136,255,0.3)',
             textShadow: '0 1px 3px rgba(0,0,0,0.5)',
           }}>
-            CREATE ROOM
+            ルーム作成
           </button>
           <button onClick={() => socket.emit('room:list')} style={{
             padding: '14px 20px', fontSize: 14, fontWeight: 700,
@@ -214,14 +214,14 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8,
             cursor: 'pointer',
           }}>
-            REFRESH
+            更新
           </button>
         </div>
 
         {error && <div style={{ color: '#ff4444', fontSize: 13, marginBottom: 12, textShadow: '0 0 8px rgba(255,68,68,0.4)' }}>{error}</div>}
 
         {/* Room List */}
-        <div className="t99-frame" style={{ padding: 0, marginBottom: 24, overflow: 'hidden', position: 'relative' }}>
+        <div className="t99-frame" style={{ padding: 0, marginBottom: 24, position: 'relative' }}>
           <div className="t99-frame-label">ROOMS</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -278,7 +278,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
                         opacity: room.status === 'playing' || room.playerCount >= room.maxPlayers ? 0.4 : 1,
                       }}
                     >
-                      JOIN
+                      参加
                     </button>
                   </td>
                 </tr>
@@ -288,7 +288,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
         </div>
 
         {/* Ranking */}
-        <div className="t99-frame" style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
+        <div className="t99-frame" style={{ padding: 0, position: 'relative' }}>
           <div className="t99-frame-label">RANKING</div>
 
           {/* Tabs */}
@@ -395,14 +395,14 @@ function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname:
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 100 }} onClick={onClose}>
       <div className="t99-frame" style={{ padding: 28, minWidth: 360 }} onClick={e => e.stopPropagation()}>
         <h2 style={{ color: '#00ccff', fontSize: 18, marginBottom: 20, textAlign: 'center', letterSpacing: 2, textShadow: '0 0 10px rgba(0,200,255,0.4)' }}>
-          CREATE ROOM
+          ルーム作成
         </h2>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>ROOM NAME</div>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>ルーム名</div>
           <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>MAX PLAYERS</div>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>最大人数</div>
           <select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))} style={inputStyle}>
             {[2, 3, 4, 5, 6, 7, 8].map(n => (
               <option key={n} value={n}>{n}人</option>
@@ -410,12 +410,12 @@ function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname:
           </select>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>PASSWORD (OPTIONAL)</div>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>パスワード（任意）</div>
           <input value={password} onChange={e => setPassword(e.target.value)} placeholder="未入力で公開" style={inputStyle} />
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnSecondary}>CANCEL</button>
-          <button onClick={handleCreate} style={btnPrimary}>CREATE</button>
+          <button onClick={onClose} style={btnSecondary}>キャンセル</button>
+          <button onClick={handleCreate} style={btnPrimary}>作成</button>
         </div>
       </div>
     </div>
@@ -455,7 +455,7 @@ function ShareUrlBox() {
             color: copied ? '#00ff88' : '#00ccff',
             border: '1px solid rgba(0,200,255,0.3)', borderRadius: 4, cursor: 'pointer',
           }}>
-            {copied ? 'COPIED' : 'COPY'}
+            {copied ? 'コピー済' : 'コピー'}
           </button>
         </div>
       )}
@@ -470,10 +470,10 @@ function PasswordModal({ roomId, onClose, onJoin }: { roomId: string; onClose: (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', zIndex: 100 }} onClick={onClose}>
       <div className="t99-frame" style={{ padding: 28, minWidth: 320 }} onClick={e => e.stopPropagation()}>
         <h2 style={{ color: '#00ccff', fontSize: 18, marginBottom: 20, textAlign: 'center', letterSpacing: 2 }}>
-          PASSWORD
+          パスワード入力
         </h2>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>ENTER PASSWORD</div>
+          <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>パスワードを入力</div>
           <input
             type="password"
             value={pw}
@@ -483,8 +483,8 @@ function PasswordModal({ roomId, onClose, onJoin }: { roomId: string; onClose: (
           />
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={btnSecondary}>CANCEL</button>
-          <button onClick={() => onJoin(roomId, pw)} style={btnPrimary}>JOIN</button>
+          <button onClick={onClose} style={btnSecondary}>キャンセル</button>
+          <button onClick={() => onJoin(roomId, pw)} style={btnPrimary}>参加</button>
         </div>
       </div>
     </div>

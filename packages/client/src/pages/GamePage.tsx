@@ -258,8 +258,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       }
       if (attackTimeoutRef.current) clearTimeout(attackTimeoutRef.current);
       attackTimeoutRef.current = setTimeout(() => setIncomingAttack(0), 1000);
-      // Garbage stock clears after lines are placed
-      setTimeout(() => setGarbageStock(prev => Math.max(0, prev - data.lines)), 800);
+      // おじゃまラインが盤面に反映されるタイミングで1段ずつ減少
+      const linesToClear = data.lines;
+      for (let i = 0; i < linesToClear; i++) {
+        setTimeout(() => {
+          setGarbageStock(prev => Math.max(0, prev - 1));
+        }, 800 + i * 150);
+      }
     };
 
     const onPlayerKO = (data: { socketId: string; rank: number }) => {
@@ -322,7 +327,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
     if (action === 'hard_drop') soundManager.playSE('harddrop');
     else if (action === 'rotate_cw' || action === 'rotate_ccw') soundManager.playSE('rotate');
-    else if (action === 'hold') soundManager.playSE('hold');
+    else if (action === 'hold') {
+      // holdUsed中（既にホールド済み）なら効果音を鳴らさない
+      const engine = localEngineRef.current;
+      if (engine && !engine.getState().holdUsed) {
+        soundManager.playSE('hold');
+      }
+    }
 
     const engine = localEngineRef.current;
     if (engine) {
@@ -454,8 +465,9 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         gap: 16,
         padding: 16,
         justifyContent: 'center',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         minHeight: '100vh',
+        paddingTop: '3vh',
       }}>
         {/* Top right buttons */}
         <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
@@ -562,8 +574,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           </div>
         )}
 
-        {/* Left side: Hold + Score + Chat */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120 }}>
+        {/* Left side: Hold + Score + Chat — align top with main board */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120, alignSelf: 'flex-start', marginTop: 0 }}>
           <HoldBox holdPiece={localState?.holdPiece ?? null} holdUsed={localState?.holdUsed ?? false} />
 
           {/* Score Panel */}
@@ -623,12 +635,23 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
             animation: screenShake ? 'screenShake 0.15s ease-out' : 'none',
             position: 'relative',
           }}>
-            {/* Garbage stock indicator (left side) */}
-            <div className="garbage-indicator" style={{ height: 20 * 30 /* BOARD_HEIGHT */ }}>
-              <div
-                className={`garbage-indicator-fill ${garbageStock > 0 ? 'animating' : ''}`}
-                style={{ height: `${Math.min(100, (garbageStock / 20) * 100)}%` }}
-              />
+            {/* Garbage stock indicator (left side) - 1マス=1段 */}
+            <div style={{
+              position: 'absolute', left: -16, bottom: 4, width: 10,
+              height: 20 * 30, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+              borderRadius: 3, overflow: 'hidden',
+              background: 'rgba(0, 30, 60, 0.4)',
+              border: '1px solid rgba(0, 150, 200, 0.2)',
+            }}>
+              {Array.from({ length: Math.min(garbageStock, 20) }).map((_, i) => (
+                <div key={i} style={{
+                  width: '100%', height: 30, /* = CELL_SIZE */
+                  background: 'linear-gradient(0deg, #ff3333, #ff5544)',
+                  borderTop: '1px solid rgba(255,80,80,0.4)',
+                  boxShadow: i === 0 ? '0 0 6px rgba(255,50,30,0.6)' : 'none',
+                  animation: 'garbageRise 0.3s ease-out',
+                }} />
+              ))}
             </div>
 
             <GameCanvas
@@ -687,8 +710,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           )}
         </div>
 
-        {/* Right side: NEXT + Opponents */}
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        {/* Right side: NEXT + Opponents — align top with main board */}
+        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', alignSelf: 'flex-start', marginTop: 0 }}>
           <div>
             <NextQueue nextQueue={localState?.nextQueue ?? []} />
           </div>

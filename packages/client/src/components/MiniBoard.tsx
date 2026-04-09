@@ -6,6 +6,39 @@ const MINI_CELL_SIZE = 10;
 const MINI_WIDTH = 10 * MINI_CELL_SIZE;
 const MINI_HEIGHT = 20 * MINI_CELL_SIZE;
 
+function lightenRGB(hex: string, amount: number): string {
+  const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + amount);
+  const g = Math.min(255, parseInt(hex.slice(3, 5), 16) + amount);
+  const b = Math.min(255, parseInt(hex.slice(5, 7), 16) + amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+function darkenRGB(hex: string, amount: number): string {
+  const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - amount);
+  const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - amount);
+  const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+/** ミニボード用タイル質感描画 */
+function drawMiniTile(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, baseColor: string) {
+  const bevel = 1;
+  // Top/Left highlight
+  ctx.fillStyle = lightenRGB(baseColor, 50);
+  ctx.fillRect(x, y, size, bevel);
+  ctx.fillRect(x, y, bevel, size);
+  // Bottom/Right shadow
+  ctx.fillStyle = darkenRGB(baseColor, 50);
+  ctx.fillRect(x, y + size - bevel, size, bevel);
+  ctx.fillRect(x + size - bevel, y, bevel, size);
+  // Inner face
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(x + bevel, y + bevel, size - bevel * 2, size - bevel * 2);
+  // Tiny highlight dot
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(x + bevel, y + bevel, Math.max(1, size - bevel * 2), 1);
+}
+
 interface Props {
   board: Board;
   nickname: string;
@@ -28,15 +61,10 @@ export default function MiniBoard({ board, nickname, isKO, attackLines }: Props)
         const cell = board[r]?.[c] ?? 0;
         if (cell === 0) {
           ctx.fillStyle = 'rgba(0, 10, 25, 0.7)';
+          ctx.fillRect(c * MINI_CELL_SIZE, r * MINI_CELL_SIZE, MINI_CELL_SIZE, MINI_CELL_SIZE);
         } else {
-          ctx.fillStyle = CELL_COLORS[cell] || CELL_COLORS[0];
-        }
-        ctx.fillRect(c * MINI_CELL_SIZE, r * MINI_CELL_SIZE, MINI_CELL_SIZE, MINI_CELL_SIZE);
-        // Cell border
-        if (cell !== 0) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(c * MINI_CELL_SIZE + 0.5, r * MINI_CELL_SIZE + 0.5, MINI_CELL_SIZE - 1, MINI_CELL_SIZE - 1);
+          const baseColor = CELL_COLORS[cell] || CELL_COLORS[0];
+          drawMiniTile(ctx, c * MINI_CELL_SIZE, r * MINI_CELL_SIZE, MINI_CELL_SIZE, baseColor);
         }
       }
     }

@@ -72,11 +72,12 @@ export default function HoldBox({ holdPiece, holdUsed }: Props) {
     const maxC = Math.max(...shape.map(([, c]) => c));
     const pieceH = maxR - minR + 1;
     const pieceW = maxC - minC + 1;
-    const offR = Math.floor((4 - pieceH) / 2) - minR;
-    const offC = Math.floor((4 - pieceW) / 2) - minC;
+    // ピクセルレベルで中央揃え
+    const pixelOffX = (size - pieceW * CELL_SIZE) / 2 - minC * CELL_SIZE;
+    const pixelOffY = (size - pieceH * CELL_SIZE) / 2 - minR * CELL_SIZE;
 
     for (const [r, c] of shape) {
-      drawMiniGlossy(ctx, (c + offC) * CELL_SIZE, (r + offR) * CELL_SIZE, CELL_SIZE, color);
+      drawMiniGlossy(ctx, c * CELL_SIZE + pixelOffX, r * CELL_SIZE + pixelOffY, CELL_SIZE, color);
     }
 
     ctx.globalAlpha = 1;

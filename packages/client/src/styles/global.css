@@ -289,6 +289,8 @@ input:focus {
   box-shadow:
     0 0 8px rgba(0, 180, 255, 0.3),
     inset 0 0 15px rgba(0, 80, 150, 0.15);
+  overflow: visible;
+  margin-top: 12px; /* space for label */
 }
 
 .t99-frame::before {
@@ -426,7 +428,7 @@ input:focus {
 
 /* Score info styling for T99 */
 .t99-score-panel {
-  padding: 10px 12px;
+  padding: 14px 12px 10px;
   font-size: 13px;
 }
 

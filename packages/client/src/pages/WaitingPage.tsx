@@ -70,7 +70,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
         </div>
 
         {/* Player List */}
-        <div className="t99-frame" style={{ padding: 0, marginBottom: 20, overflow: 'hidden', position: 'relative' }}>
+        <div className="t99-frame" style={{ padding: 0, marginBottom: 20, position: 'relative' }}>
           <div className="t99-frame-label">PLAYERS</div>
           <div style={{
             padding: '14px 16px 6px',
@@ -105,7 +105,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
                   boxShadow: p.socketId === roomState.hostSocketId
                     ? '0 0 10px rgba(255,170,0,0.4)' : '0 0 10px rgba(0,136,255,0.3)',
                 }}>
-                  {p.nickname.charAt(0).toUpperCase()}
+                  {i + 1}
                 </div>
                 <span style={{ color: '#fff', fontWeight: 600, fontSize: 15, flex: 1 }}>
                   {p.nickname}
@@ -159,14 +159,14 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
                 boxShadow: playersNeeded > 0 ? 'none' : '0 0 20px rgba(0,200,100,0.3)',
                 textShadow: '0 1px 3px rgba(0,0,0,0.5)',
               }}>
-                GAME START
+                ゲーム開始
               </button>
               <button onClick={() => setShowSettings(!showSettings)} style={{
                 padding: '14px 20px', fontSize: 13, fontWeight: 700,
                 background: 'rgba(0,30,60,0.8)', color: '#00ccff',
                 border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8, cursor: 'pointer',
               }}>
-                SETTINGS
+                ルーム設定
               </button>
             </>
           )}
@@ -175,14 +175,14 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
             background: 'rgba(80,20,20,0.6)', color: '#ff6666',
             border: '1px solid rgba(255,100,100,0.3)', borderRadius: 8, cursor: 'pointer',
           }}>
-            LEAVE
+            退出
           </button>
         </div>
 
         {/* Host Settings Panel */}
         {showSettings && isHost && (
           <div className="t99-frame" style={{ padding: 20, marginBottom: 20, position: 'relative' }}>
-            <div className="t99-frame-label">SETTINGS</div>
+            <div className="t99-frame-label">ルーム設定</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
               <div>
                 <div style={{ color: 'rgba(0,200,255,0.6)', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>MAX PLAYERS</div>
@@ -215,7 +215,7 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
                 background: 'linear-gradient(180deg, #0088ff, #0055cc)',
                 color: '#fff', border: '2px solid rgba(0,150,255,0.5)',
                 borderRadius: 6, cursor: 'pointer',
-              }}>APPLY</button>
+              }}>適用</button>
             </div>
           </div>
         )}

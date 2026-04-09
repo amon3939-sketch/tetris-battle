@@ -134,7 +134,7 @@ export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }
               boxShadow: '0 0 20px rgba(0,136,255,0.3)',
               textShadow: '0 1px 3px rgba(0,0,0,0.5)',
             }}>
-              REMATCH
+              ルームに戻る
             </button>
           )}
           <button onClick={goToLobby} style={{
@@ -143,7 +143,7 @@ export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }
             border: '1px solid rgba(0,200,255,0.3)', borderRadius: 8, cursor: 'pointer',
             letterSpacing: 1,
           }}>
-            LOBBY
+            ロビーへ戻る
           </button>
         </div>
       </div>
