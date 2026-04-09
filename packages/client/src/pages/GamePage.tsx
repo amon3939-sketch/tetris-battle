@@ -82,6 +82,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const serverLevelRef = useRef(1);
   const serverComboRef = useRef(-1);
   const serverB2bRef = useRef(false);
+  // ローカルボード→サーバー同期用カウンター
+  const boardSyncCounterRef = useRef(0);
 
   const [otherBoards, setOtherBoards] = useState<Map<string, Board>>(new Map());
   const [koList, setKoList] = useState<Set<string>>(new Set());
@@ -183,6 +185,18 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                 b2bActive: serverB2bRef.current,
                 isGameOver: state.isGameOver,
               });
+
+              // ローカルボードを定期的にサーバーに送信（約200ms間隔 = 12フレームごと）
+              // → 他プレイヤーのミニボードに正確なローカル状態が表示される
+              boardSyncCounterRef.current++;
+              if (boardSyncCounterRef.current % 12 === 0) {
+                socket.emit('board:sync', {
+                  board: state.board,
+                  currentPiece: state.currentPiece,
+                  score: state.score,
+                  linesCleared: state.linesCleared,
+                });
+              }
             }, 16);
           }
         }, 500);

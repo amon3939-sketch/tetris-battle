@@ -406,10 +406,7 @@ export class GameEngine {
     // ホールド/ネクスト同期
     this.holdPiece = serverState.holdPiece;
     this.holdUsed = serverState.holdUsed;
-    // ゲームオーバー同期
-    if (serverState.isGameOver) {
-      this.isGameOver = true;
-    }
+    // ※ ゲームオーバーはローカルエンジンのスポーン判定でのみ決定（サーバーからの同期はしない）
     // 操作中ピースが大きくズレている場合はサーバーに合わせる
     // （ピースタイプが違う＝別のピースになっている場合）
     if (serverState.currentPiece && this.currentPiece) {

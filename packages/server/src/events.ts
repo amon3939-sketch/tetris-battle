@@ -179,6 +179,20 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       });
     });
 
+    // ローカルボード同期（クライアントのローカルエンジン状態を他プレイヤーに転送）
+    socket.on('board:sync', (data: { board: any; currentPiece: any; score: number; linesCleared: number }) => {
+      const room = roomManager.getRoomBySocketId(socket.id);
+      if (!room) return;
+      // 他プレイヤーのミニボード用にbroadcast（ローカルの正確な状態）
+      io.to(room.id).emit('board:update', {
+        socketId: socket.id,
+        board: data.board,
+        currentPiece: data.currentPiece,
+        score: data.score,
+        linesCleared: data.linesCleared,
+      });
+    });
+
     // スタンプ送信
     socket.on('stamp:send', ({ text, style }: { text: string; style: string }) => {
       const room = roomManager.getRoomBySocketId(socket.id);

@@ -5,6 +5,8 @@ interface ChatMessage {
   nickname: string;
   text: string;
   ts: number;
+  isStamp?: boolean;
+  stampStyle?: string;
 }
 
 interface Props {
@@ -30,10 +32,22 @@ export default function ChatBox({ roomId }: Props) {
     });
   }, []);
 
+  const onStampMessage = useCallback((data: { nickname: string; text: string; style: string }) => {
+    setMessages(prev => {
+      const next = [...prev, { nickname: data.nickname, text: data.text, ts: Date.now(), isStamp: true, stampStyle: data.style }];
+      if (next.length > 50) next.shift();
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     socket.on('chat:message', onMessage);
-    return () => { socket.off('chat:message', onMessage); };
-  }, [onMessage]);
+    socket.on('stamp:receive', onStampMessage);
+    return () => {
+      socket.off('chat:message', onMessage);
+      socket.off('stamp:receive', onStampMessage);
+    };
+  }, [onMessage, onStampMessage]);
 
   // Auto-scroll
   useEffect(() => {
@@ -76,6 +90,30 @@ export default function ChatBox({ roomId }: Props) {
       >
         {messages.map((msg, i) => {
           const isMine = msg.nickname === myNickname.current;
+          if (msg.isStamp) {
+            // スタンプ表示（チャット内）
+            return (
+              <div key={i} style={{ textAlign: 'center', marginBottom: 6 }}>
+                <span style={{ color: '#888', fontSize: 10 }}>{msg.nickname}</span>
+                <div style={{
+                  display: 'inline-block',
+                  background: msg.stampStyle === 'pop'
+                    ? 'linear-gradient(135deg, #ff6b6b, #ffa500)'
+                    : '#2a2a4a',
+                  padding: '4px 14px',
+                  borderRadius: 12,
+                  fontSize: msg.stampStyle === 'pop' ? 15 : 13,
+                  fontWeight: msg.stampStyle === 'pop' ? 700 : 400,
+                  fontFamily: msg.stampStyle === 'serious'
+                    ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                  color: '#fff',
+                  marginTop: 2,
+                }}>
+                  {msg.text}
+                </div>
+              </div>
+            );
+          }
           return (
             <div
               key={i}

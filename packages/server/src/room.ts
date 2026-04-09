@@ -110,6 +110,10 @@ export class RoomManager {
     if (!room) return { ok: false, error: 'Room not found' };
     if (room.hostSocketId !== socketId) return { ok: false, error: 'Only host can start the game' };
     if (room.status === 'playing') return { ok: false, error: 'Game already in progress' };
+    // maxPlayersに達していない場合はゲーム開始不可（ソロ=1人部屋は除外）
+    if (room.maxPlayers > 1 && room.players.length < room.maxPlayers) {
+      return { ok: false, error: `プレイヤーが揃っていません (${room.players.length}/${room.maxPlayers})` };
+    }
     if (room.players.length < 1) return { ok: false, error: 'Not enough players' };
 
     room.status = 'playing';
