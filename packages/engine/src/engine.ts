@@ -105,21 +105,15 @@ export class GameEngine {
     this.fillNextQueue();
     const piece = spawnPiece(nextType);
 
-    // ゲームオーバー判定：スポーン位置で配置可能か確認
-    if (isValidPosition(this.board, piece)) {
-      this.currentPiece = piece;
-    } else {
-      // 1行下にずらしてリトライ（スポーン位置が高いので余裕をもたせる）
-      const adjusted = { ...piece, y: piece.y + 1 };
-      if (isValidPosition(this.board, adjusted)) {
-        this.currentPiece = adjusted;
-      } else {
-        // どうしても配置できない → ゲームオーバー
-        this.isGameOver = true;
-        this.currentPiece = null;
-        return false;
-      }
+    // ゲームオーバー判定：スポーン位置のブロックが既存ブロックと完全に重なる場合のみ
+    // ピースの全セルがボード内かつ全て衝突している場合にゲームオーバー
+    if (!isValidPosition(this.board, piece)) {
+      this.isGameOver = true;
+      this.currentPiece = null;
+      return false;
     }
+
+    this.currentPiece = piece;
     this.holdUsed = false;
     this.lockTimer = 0;
     this.lockResets = 0;
@@ -308,19 +302,12 @@ export class GameEngine {
           const swapType = this.holdPiece;
           this.holdPiece = currentType;
           const swapPiece = spawnPiece(swapType);
-          // スポーン位置で重なっても、下にずらして配置可能ならゲームオーバーにしない
           if (isValidPosition(this.board, swapPiece)) {
             this.currentPiece = swapPiece;
           } else {
-            // 1行下にずらしてリトライ
-            const adjusted = { ...swapPiece, y: swapPiece.y + 1 };
-            if (isValidPosition(this.board, adjusted)) {
-              this.currentPiece = adjusted;
-            } else {
-              // どうしても配置できない → ゲームオーバー
-              this.isGameOver = true;
-              this.currentPiece = null;
-            }
+            // 配置できない → ゲームオーバー
+            this.isGameOver = true;
+            this.currentPiece = null;
           }
         } else {
           this.holdPiece = currentType;
