@@ -9,6 +9,7 @@ interface RoomState {
   maxPlayers?: number;
   hasPassword?: boolean;
   status: string;
+  readyPlayerIds?: string[];
 }
 
 interface Props {
@@ -25,6 +26,9 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
 
   const isHost = roomState.hostSocketId === socket.id;
   const playersNeeded = (roomState.maxPlayers ?? 2) - roomState.players.length;
+  const readySet = new Set(roomState.readyPlayerIds ?? []);
+  const allReady = roomState.players.every(p => readySet.has(p.socketId));
+  const canStart = playersNeeded <= 0 && allReady;
 
   const handleStart = () => {
     socket.emit('game:start');
@@ -79,11 +83,15 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
             <span style={{ color: 'rgba(0,200,255,0.6)', fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
               {roomState.players.length} / {roomState.maxPlayers ?? '?'}
             </span>
-            {playersNeeded > 0 && (
+            {playersNeeded > 0 ? (
               <span style={{ color: '#ffaa00', fontSize: 11, fontWeight: 600 }}>
                 あと {playersNeeded}人
               </span>
-            )}
+            ) : !allReady ? (
+              <span style={{ color: '#ffaa00', fontSize: 11, fontWeight: 600 }}>
+                プレイヤーの復帰待ち...
+              </span>
+            ) : null}
           </div>
           <div style={{ padding: '0 8px 8px' }}>
             {roomState.players.map((p, i) => (
@@ -120,6 +128,13 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
                 {p.socketId === socket.id && (
                   <span style={{ fontSize: 11, color: '#00ccff', fontWeight: 600 }}>YOU</span>
                 )}
+                {!readySet.has(p.socketId) && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: 1,
+                    color: '#ffaa00', padding: '2px 6px',
+                    border: '1px solid rgba(255,170,0,0.4)', borderRadius: 4,
+                  }}>未準備</span>
+                )}
               </div>
             ))}
             {/* Empty slots */}
@@ -147,16 +162,16 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
           {isHost && (
             <>
-              <button onClick={handleStart} style={{
+              <button onClick={handleStart} disabled={!canStart} style={{
                 flex: 1, padding: '14px 24px', fontSize: 16, fontWeight: 900, whiteSpace: 'nowrap',
-                background: playersNeeded > 0
-                  ? 'rgba(0,30,60,0.5)' : 'linear-gradient(180deg, #00cc88, #008855)',
+                background: canStart
+                  ? 'linear-gradient(180deg, #00cc88, #008855)' : 'rgba(0,30,60,0.5)',
                 color: '#fff',
-                border: playersNeeded > 0
-                  ? '2px solid rgba(0,200,255,0.2)' : '2px solid rgba(0,255,136,0.5)',
-                borderRadius: 8, cursor: playersNeeded > 0 ? 'not-allowed' : 'pointer',
-                letterSpacing: 2, opacity: playersNeeded > 0 ? 0.5 : 1,
-                boxShadow: playersNeeded > 0 ? 'none' : '0 0 20px rgba(0,200,100,0.3)',
+                border: canStart
+                  ? '2px solid rgba(0,255,136,0.5)' : '2px solid rgba(0,200,255,0.2)',
+                borderRadius: 8, cursor: canStart ? 'pointer' : 'not-allowed',
+                letterSpacing: 2, opacity: canStart ? 1 : 0.5,
+                boxShadow: canStart ? '0 0 20px rgba(0,200,100,0.3)' : 'none',
                 textShadow: '0 1px 3px rgba(0,0,0,0.5)',
               }}>
                 ゲーム開始

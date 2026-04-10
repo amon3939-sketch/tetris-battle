@@ -18,6 +18,7 @@ function emitRoomState(io: Server, room: ReturnType<RoomManager['getRoom']>) {
     maxPlayers: room.maxPlayers,
     hasPassword: !!room.password,
     status: room.status,
+    readyPlayerIds: Array.from(room.readyPlayerIds),
   });
 }
 
@@ -99,11 +100,15 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       io.emit('room:list', roomManager.getRoomList());
     });
 
-    // ゲーム終了後にルームへ戻る（waitingに戻す）
+    // ゲーム終了後にルームへ戻る
     socket.on('game:backToRoom', () => {
       const room = roomManager.getRoomBySocketId(socket.id);
       if (!room) return;
-      // ゲームが終了している場合のみ
+
+      // このプレイヤーをready状態に
+      room.readyPlayerIds.add(socket.id);
+
+      // ゲームが終了している場合のみゲームルームを停止
       if (room.status === 'playing' && room.gameRoom) {
         room.gameRoom.stop();
         room.gameRoom = undefined;

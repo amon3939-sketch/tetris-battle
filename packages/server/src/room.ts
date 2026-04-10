@@ -15,6 +15,8 @@ export interface Room {
   players: RoomPlayer[];
   status: 'waiting' | 'playing';
   gameRoom?: ServerGameRoom;
+  /** ゲーム終了後にルームに戻ったプレイヤーのID */
+  readyPlayerIds: Set<string>;
 }
 
 export class RoomManager {
@@ -35,6 +37,7 @@ export class RoomManager {
       password,
       players: [{ socketId, nickname }],
       status: 'waiting',
+      readyPlayerIds: new Set([socketId]),
     };
     this.rooms.set(room.id, room);
     return room;
@@ -53,6 +56,7 @@ export class RoomManager {
     if (room.password && room.password !== password) return { ok: false, error: 'Incorrect password' };
 
     room.players.push({ socketId, nickname });
+    room.readyPlayerIds.add(socketId);
     return { ok: true, room };
   }
 
@@ -62,6 +66,7 @@ export class RoomManager {
 
     const wasHost = room.hostSocketId === socketId;
     room.players = room.players.filter(p => p.socketId !== socketId);
+    room.readyPlayerIds.delete(socketId);
 
     if (room.players.length === 0) {
       if (room.gameRoom) room.gameRoom.stop();
@@ -116,7 +121,17 @@ export class RoomManager {
     }
     if (room.players.length < 1) return { ok: false, error: 'Not enough players' };
 
+    // 全プレイヤーがルームに戻っているか確認（マルチプレイ時）
+    if (room.players.length > 1) {
+      const notReady = room.players.filter(p => !room.readyPlayerIds.has(p.socketId));
+      if (notReady.length > 0) {
+        const names = notReady.map(p => p.nickname).join(', ');
+        return { ok: false, error: `${names} がまだ戻っていません` };
+      }
+    }
+
     room.status = 'playing';
+    room.readyPlayerIds.clear();
     return { ok: true };
   }
 }
