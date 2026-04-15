@@ -325,7 +325,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             <tbody>
               {currentRanking.length === 0 && (
                 <tr>
-                  <td colSpan={rankingTab === 'multi' ? 6 : 4} style={{ padding: 30, textAlign: 'center', color: 'rgba(0,200,255,0.4)', fontSize: 14 }}>
+                  <td colSpan={rankingTab === 'multi' ? 6 : 4} style={{ padding: 20, textAlign: 'center', color: 'rgba(0,200,255,0.4)', fontSize: 13 }}>
                     まだ記録がありません
                   </td>
                 </tr>
@@ -367,7 +367,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '10px 12px', textAlign: 'left',
+  padding: '6px 12px', textAlign: 'left',
   color: 'rgba(0,200,255,0.7)', fontSize: 11, fontWeight: 700,
   letterSpacing: 1, textTransform: 'uppercase' as const,
   borderBottom: '1px solid rgba(0,150,200,0.2)',
@@ -375,7 +375,7 @@ const thStyle: React.CSSProperties = {
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '10px 12px', fontSize: 14,
+  padding: '6px 12px', fontSize: 13,
 };
 
 function CreateRoomModal({ onClose, nickname }: { onClose: () => void; nickname: string }) {

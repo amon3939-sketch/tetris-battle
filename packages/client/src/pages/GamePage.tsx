@@ -204,11 +204,11 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
               const state = engine.getState();
               setLocalState({
                 ...state,
-                score: serverScoreRef.current,
-                linesCleared: serverLinesRef.current,
-                level: serverLevelRef.current,
+                score: Math.max(serverScoreRef.current, state.score),
+                linesCleared: Math.max(serverLinesRef.current, state.linesCleared),
+                level: Math.max(serverLevelRef.current, state.level),
                 combo: serverComboRef.current,
-                b2bActive: serverB2bRef.current,
+                b2bActive: serverB2bRef.current || state.b2bActive,
                 isGameOver: state.isGameOver,
               });
 
@@ -669,6 +669,26 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
               </div>
             )}
           </div>
+
+          {/* Controls guide */}
+          <div className="t99-frame" style={{ padding: '8px 10px', position: 'relative', marginTop: 4 }}>
+            <div className="t99-frame-label">CONTROLS</div>
+            <div style={{ fontSize: 10, color: 'rgba(0,200,255,0.6)', lineHeight: 1.8, marginTop: 4 }}>
+              {[
+                ['ブロック回転', 'Space'],
+                ['ホールド', 'Shift'],
+                ['ハードドロップ', '↑'],
+                ['ソフトドロップ', '↓'],
+                ['右移動', '→'],
+                ['左移動', '←'],
+              ].map(([label, key]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                  <span>{label}</span>
+                  <span style={{ color: '#fff', fontWeight: 700, fontFamily: 'monospace' }}>{key}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Center: Main board with T99 frame */}
@@ -712,7 +732,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
               };
               return (
                 <div style={{
-                  position: 'absolute', left: -18, bottom: 4, width: 12,
+                  position: 'absolute', left: -36, bottom: 4, width: 30,
                   height: 20 * 30, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
                   borderRadius: 3, overflow: 'hidden',
                   background: 'rgba(0, 20, 40, 0.5)',
