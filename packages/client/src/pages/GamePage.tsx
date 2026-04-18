@@ -616,62 +616,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           </div>
         )}
 
-        {/* Left side: Hold + Score + Chat — align top with main board */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120, alignSelf: 'flex-start', marginTop: 0 }}>
-          <HoldBox holdPiece={localState?.holdPiece ?? null} holdUsed={localState?.holdUsed ?? false} />
-
-          {/* Score Panel */}
-          <div className="t99-frame t99-score-panel" style={{ position: 'relative' }}>
-            <div className="t99-frame-label">SCORE</div>
-            <div className="score-row" style={{ marginTop: 6 }}>
-              <div className="score-label">SCORE</div>
-              <div className="score-value">{(localState?.score ?? 0).toLocaleString()}</div>
-            </div>
-            <div className="score-row">
-              <div className="score-label">LINES</div>
-              <div className="score-value">{localState?.linesCleared ?? 0}</div>
-            </div>
-            <div className="score-row">
-              <div className="score-label">LEVEL</div>
-              <div className="score-value">{localState?.level ?? 1}</div>
-            </div>
-            <div className="score-row">
-              <div className="score-label">COMBO</div>
-              <div className="score-value">{Math.max(0, localState?.combo ?? 0)}</div>
-            </div>
-            {localState?.b2bActive && <div className="t99-b2b">B2B</div>}
-          </div>
-
-          <ChatBox roomId={roomState?.room?.id ?? ''} />
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setShowStamps(!showStamps)} style={{
-              width: '100%', fontSize: 12, padding: '6px',
-              background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.3)',
-              borderRadius: 6, color: '#00ccff', fontWeight: 700, cursor: 'pointer',
-            }}>STAMP</button>
-            {showStamps && (
-              <div style={{
-                position: 'absolute', bottom: '100%', left: 0, right: 0,
-                background: 'rgba(0,10,30,0.95)', border: '1px solid rgba(0,200,255,0.3)',
-                borderRadius: 8, padding: 8, display: 'grid', gridTemplateColumns: '1fr 1fr',
-                gap: 6, marginBottom: 4, zIndex: 50,
-              }}>
-                {STAMPS.map(s => (
-                  <button key={s.id} onClick={() => sendStamp(s)} style={{
-                    background: s.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,30,60,0.8)',
-                    color: '#fff', border: s.style === 'pop' ? 'none' : '1px solid rgba(0,200,255,0.2)',
-                    borderRadius: 6, padding: '6px 4px',
-                    fontSize: s.style === 'pop' ? 13 : 12, cursor: 'pointer',
-                    fontFamily: s.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
-                    fontWeight: s.style === 'pop' ? 700 : 400,
-                  }}>{s.text}</button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Controls guide */}
-          <div className="t99-frame" style={{ padding: '8px 10px', position: 'relative', marginTop: 4 }}>
+        {/* Left side: Controls | Hold + Score + Chat */}
+        <div style={{ display: 'flex', gap: 10, alignSelf: 'flex-start', marginTop: 0 }}>
+          {/* Controls guide (leftmost) */}
+          <div className="t99-frame" style={{ padding: '8px 10px', position: 'relative', alignSelf: 'flex-start', minWidth: 110 }}>
             <div className="t99-frame-label">CONTROLS</div>
             <div style={{ fontSize: 10, color: 'rgba(0,200,255,0.6)', lineHeight: 1.8, marginTop: 4 }}>
               {[
@@ -683,10 +631,65 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                 ['左移動', '←'],
               ].map(([label, key]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                  <span>{label}</span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
                   <span style={{ color: '#fff', fontWeight: 700, fontFamily: 'monospace' }}>{key}</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Hold + Score + Chat + Stamp column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 120 }}>
+            <HoldBox holdPiece={localState?.holdPiece ?? null} holdUsed={localState?.holdUsed ?? false} />
+
+            {/* Score Panel */}
+            <div className="t99-frame t99-score-panel" style={{ position: 'relative' }}>
+              <div className="t99-frame-label">SCORE</div>
+              <div className="score-row" style={{ marginTop: 6 }}>
+                <div className="score-label">SCORE</div>
+                <div className="score-value">{(localState?.score ?? 0).toLocaleString()}</div>
+              </div>
+              <div className="score-row">
+                <div className="score-label">LINES</div>
+                <div className="score-value">{localState?.linesCleared ?? 0}</div>
+              </div>
+              <div className="score-row">
+                <div className="score-label">LEVEL</div>
+                <div className="score-value">{localState?.level ?? 1}</div>
+              </div>
+              <div className="score-row">
+                <div className="score-label">COMBO</div>
+                <div className="score-value">{Math.max(0, localState?.combo ?? 0)}</div>
+              </div>
+              {localState?.b2bActive && <div className="t99-b2b">B2B</div>}
+            </div>
+
+            <ChatBox roomId={roomState?.room?.id ?? ''} />
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowStamps(!showStamps)} style={{
+                width: '100%', fontSize: 12, padding: '6px',
+                background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.3)',
+                borderRadius: 6, color: '#00ccff', fontWeight: 700, cursor: 'pointer',
+              }}>STAMP</button>
+              {showStamps && (
+                <div style={{
+                  position: 'absolute', bottom: '100%', left: 0, right: 0,
+                  background: 'rgba(0,10,30,0.95)', border: '1px solid rgba(0,200,255,0.3)',
+                  borderRadius: 8, padding: 8, display: 'grid', gridTemplateColumns: '1fr 1fr',
+                  gap: 6, marginBottom: 4, zIndex: 50,
+                }}>
+                  {STAMPS.map(s => (
+                    <button key={s.id} onClick={() => sendStamp(s)} style={{
+                      background: s.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,30,60,0.8)',
+                      color: '#fff', border: s.style === 'pop' ? 'none' : '1px solid rgba(0,200,255,0.2)',
+                      borderRadius: 6, padding: '6px 4px',
+                      fontSize: s.style === 'pop' ? 13 : 12, cursor: 'pointer',
+                      fontFamily: s.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                      fontWeight: s.style === 'pop' ? 700 : 400,
+                    }}>{s.text}</button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
