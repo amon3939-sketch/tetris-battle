@@ -134,6 +134,37 @@ describe('トークンのリフレッシュ', () => {
   });
 });
 
+describe('リフレッシュ直後の失敗', () => {
+  it('API が落ちても、回した新トークンを例外に載せて返す', async () => {
+    // これを落とすと、ブラウザは古いリフレッシュトークンを持ち続け、
+    // 次の要求で消費済みを再提示してテクマナに全トークンを失効させられる。
+    stubFetch((url) =>
+      url.includes('/oauth/token')
+        ? [200, { access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600 }]
+        : [500, { error: 'boom' }],
+    );
+    await expect(readSave(expiredSession(), 'tetox')).rejects.toMatchObject({
+      status: 500,
+      session: { accessToken: 'new-access', refreshToken: 'new-refresh' },
+    });
+  });
+
+  it('大きすぎて送らなかった場合も、回した新トークンは返す', async () => {
+    stubFetch(() => [200, { access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600 }]);
+    await expect(
+      writeSave(expiredSession(), 'tetox', { blob: 'x'.repeat(1_100_000) }, 2),
+    ).rejects.toMatchObject({ status: 413, session: { accessToken: 'new-access' } });
+  });
+
+  it('リフレッシュしていなければ session は付けない(貼り直す必要が無い)', async () => {
+    stubFetch(() => [500, { error: 'boom' }]);
+    await expect(readSave(liveSession(), 'tetox')).rejects.toMatchObject({ status: 500 });
+    await readSave(liveSession(), 'tetox').catch((e) => {
+      expect(e.session).toBeUndefined();
+    });
+  });
+});
+
 describe('セーブ', () => {
   it('存在しないスロットは null', async () => {
     stubFetch(() => [404, { error: 'not_found' }]);

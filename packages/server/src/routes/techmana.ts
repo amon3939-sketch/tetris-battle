@@ -165,6 +165,10 @@ function unauthenticated(res: Response): void {
 
 function sendError(res: Response, e: unknown): void {
   if (e instanceof TechmanaError) {
+    // 失敗していても、直前にトークンを回していたなら必ず貼り直す。
+    // 貼り直さないとブラウザが消費済みのリフレッシュトークンを持ち続け、
+    // 次の要求で再提示してテクマナに全トークンを失効させられる。
+    if (e.session && e.status !== 401) setSession(res, e.session);
     if (e.status === 401) {
       // トークンが死んでいる。Cookie を落として未連携に戻す。
       clearSession(res);

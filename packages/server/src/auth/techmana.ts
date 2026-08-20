@@ -21,7 +21,20 @@ const TIMEOUT_MS = 15_000;
 const MAX_SAVE_BYTES = 1_000_000;
 
 export class TechmanaError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    /**
+     * リフレッシュを終えた後に失敗した場合の、更新済みセッション。
+     *
+     * これを運ばないと事故になる。トークンを回した直後にセーブAPIが
+     * 落ちると、新しいリフレッシュトークンがどこにも保存されないまま
+     * 例外で抜ける。ブラウザは古いものを持ち続け、次の要求で消費済みの
+     * トークンを再提示し、テクマナがそれを漏洩とみなして全トークンを
+     * 失効させる。呼び出し側はこれを見て Cookie を貼り直す。
+     */
+    readonly session?: SessionData,
+  ) {
     super(message);
     this.name = 'TechmanaError';
   }
@@ -122,7 +135,9 @@ export async function readSave(
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (res.status === 404) return { ...t, value: null };
-  if (!res.ok) throw new TechmanaError(res.status, `read save failed: ${res.status}`);
+  if (!res.ok) {
+    throw new TechmanaError(res.status, `read save failed: ${res.status}`, refreshedOrUndefined(t));
+  }
   return { ...t, value: await res.json() };
 }
 
@@ -135,7 +150,7 @@ export async function writeSave(
   const t = await usableToken(session);
   const serialized = JSON.stringify({ payload, ...(saveSeq ? { save_seq: saveSeq } : {}) });
   if (Buffer.byteLength(serialized, 'utf8') > MAX_SAVE_BYTES) {
-    throw new TechmanaError(413, 'save payload too large');
+    throw new TechmanaError(413, 'save payload too large', refreshedOrUndefined(t));
   }
   const res = await fetch(`${config.techmana.baseUrl}/api/v1/saves/${encodeURIComponent(slot)}`, {
     method: 'PUT',
@@ -149,10 +164,15 @@ export async function writeSave(
   const body = await res.json().catch(() => ({}));
   if (res.ok) return { ...t, value: { ok: true, body } };
   if (res.status === 409) return { ...t, value: { ok: false, body } };
-  throw new TechmanaError(res.status, `write save failed: ${res.status}`);
+  throw new TechmanaError(res.status, `write save failed: ${res.status}`, refreshedOrUndefined(t));
 }
 
 /* ------------------------------ private ------------------------------ */
+
+/** リフレッシュが起きたときだけセッションを返す。起きていなければ貼り直す必要がない。 */
+function refreshedOrUndefined(t: { session: SessionData; refreshed: boolean }): SessionData | undefined {
+  return t.refreshed ? t.session : undefined;
+}
 
 /**
  * リフレッシュの取りまとめ。

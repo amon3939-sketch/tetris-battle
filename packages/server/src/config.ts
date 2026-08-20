@@ -39,5 +39,14 @@ export const config = {
 
 export function techmanaEnabled(): boolean {
   const t = config.techmana;
-  return t.clientId !== '' && t.clientSecret !== '' && t.redirectUri !== '';
+  if (t.clientId === '' || t.clientSecret === '' || t.redirectUri === '') return false;
+  // 鍵が無いと毎起動ランダムになり、セッションの唯一の保管場所である
+  // Cookie が再起動のたび復号不能になる。利用者からは「連携が勝手に
+  // 切れる」としか見えないので、そうなるくらいなら機能ごと出さない。
+  // プロセスは落とさない — ゲーム本体は従来どおり遊べる。
+  return sessionSecretConfigured();
+}
+
+function sessionSecretConfigured(): boolean {
+  return trimmed(process.env.SESSION_SECRET) !== '';
 }

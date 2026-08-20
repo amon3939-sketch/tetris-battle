@@ -67,7 +67,13 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
         socket.data.nickname = nickname || socket.data.nickname;
       } else {
         socket.data.nickname = nickname;
-        socket.data.fingerprint = fingerprint;
+        // ゲストの申告値はそのまま使わず、必ず guest: 名前空間に押し込む。
+        // 素通しにすると `tm:777` を名乗れてしまい、ログイン済みの人の
+        // ランキング行に書き込める（db.ts の getOrCreatePlayer は
+        // fingerprint の文字列一致だけで行を引き当て、ニックネームまで
+        // 上書きする）。16進以外を捨てるので tm: は構文的に作れない。
+        const raw = String(fingerprint ?? '').replace(/[^0-9a-f]/gi, '').slice(0, 32);
+        socket.data.fingerprint = `guest:${raw || socket.id}`;
       }
       socket.emit('room:list', roomManager.getRoomList());
     });
