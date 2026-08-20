@@ -4,6 +4,7 @@ import { ServerGameRoom } from './game.js';
 import type { Database } from './db.js';
 import { getRanking } from './db.js';
 import { verifyTechmanaToken } from './techmana.js';
+import { readSession } from './auth/session.js';
 
 function sanitize(text: string): string {
   return text.replace(/<[^>]*>/g, '').slice(0, 140);
@@ -26,6 +27,22 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
   io.on('connection', (socket: Socket) => {
     console.log(`Connected: ${socket.id}`);
 
+    // テクマナの同定は2経路ある。どちらも「サーバが確かめた値」だけを
+    // socket.data.account に載せ、クライアントの自己申告は採らない。
+    //
+    //  (a) セッション Cookie — OAuth でログイン済みの場合。
+    //  (b) 起動トークン — テクマナから ?tm_token= 付きで開かれた場合。
+    //
+    // fingerprint を自己申告のままにすると、UA が変われば別人になり、
+    // 同型端末どうしでは衝突して同じランキング行を共有してしまう。
+    // account が載っている人はその問題から外れる。
+    const session = readSession(socket.handshake.headers.cookie);
+    if (session) {
+      socket.data.account = session.sub;
+      socket.data.fingerprint = `tm:${session.sub}`;
+      socket.data.nickname = session.nickname;
+    }
+
     // テクマナ起動トークン検証（tm_token付きURLで起動された場合）
     socket.on('auth:techmana', async ({ token }: { token: string }) => {
       if (typeof token !== 'string' || !token) return;
@@ -34,6 +51,9 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
         socket.emit('auth:techmana:error', { message: 'テクマナ認証に失敗しました' });
         return;
       }
+      // 検証を通ったのはサーバなので、ここで account を立てる。
+      // 以降 player:setNickname は同定キーを書き換えられなくなる。
+      socket.data.account = user.userId;
       socket.data.nickname = user.name;
       socket.data.fingerprint = `tm:${user.userId}`;
       socket.emit('auth:techmana:ok', user);
@@ -41,8 +61,14 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
 
     // ニックネーム設定
     socket.on('player:setNickname', ({ nickname, fingerprint }: { nickname: string; fingerprint: string }) => {
-      socket.data.nickname = nickname;
-      socket.data.fingerprint = fingerprint;
+      // ログイン中の同定キーはクライアントに上書きさせない。
+      // 名前だけは本人が変えられてよい（テクマナの表示名と別にしたい人がいる）。
+      if (socket.data.account) {
+        socket.data.nickname = nickname || socket.data.nickname;
+      } else {
+        socket.data.nickname = nickname;
+        socket.data.fingerprint = fingerprint;
+      }
       socket.emit('room:list', roomManager.getRoomList());
     });
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socket } from '../socket.ts';
+import { scheduleCloudPush } from '../cloud/sync.ts';
 import type { Board, Piece, Action, GameState } from '@tetris/engine/src/types.ts';
 import { GameEngine } from '@tetris/engine/src/engine.ts';
 import { PIECE_SHAPES, PIECE_GRID_SIZE } from '@tetris/engine/src/piece.ts';
@@ -58,6 +59,7 @@ function loadKeyMap(): Record<string, Action> {
 
 function saveKeyMap(map: Record<string, Action>) {
   localStorage.setItem('tetris_keymap', JSON.stringify(map));
+  scheduleCloudPush();
 }
 
 function getPieceCellsForRender(piece: Piece): [number, number][] {
@@ -422,11 +424,13 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
     setBgmVol(v);
     soundManager.setBGMVolume(v);
     localStorage.setItem('tetris_bgm_vol', String(v));
+    scheduleCloudPush();
   }, []);
   const handleSeVol = useCallback((v: number) => {
     setSeVol(v);
     soundManager.setSEVolume(v);
     localStorage.setItem('tetris_se_vol', String(v));
+    scheduleCloudPush();
   }, []);
 
   const sendStamp = useCallback((stamp: typeof STAMPS[0]) => {

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { socket } from '../socket.ts';
 import { generateFingerprint } from '../fingerprint.ts';
 import { soundManager } from '../sounds.ts';
+import TechmanaBar from '../cloud/TechmanaBar.tsx';
+import { scheduleCloudPush } from '../cloud/sync.ts';
 
 interface RoomListItem {
   id: string;
@@ -94,6 +96,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
   const handleNicknameChange = (name: string) => {
     setNickname(name);
     localStorage.setItem('tetris_nickname', name);
+    scheduleCloudPush();
     if (socket.connected) {
       socket.emit('player:setNickname', {
         nickname: name || 'Guest',
@@ -142,6 +145,9 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             margin: 0,
           }}>テトックス</h1>
         </div>
+
+        {/* Techmana SSO */}
+        <TechmanaBar />
 
         {/* Nickname + Connection */}
         <div className="t99-frame" style={{

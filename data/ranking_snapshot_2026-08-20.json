@@ -1,0 +1,161 @@
+{
+  "solo": [
+    {
+      "nickname": "殺助",
+      "totalWins": 1,
+      "totalMatches": 1,
+      "winRate": 1,
+      "bestScore": 20800,
+      "totalLines": 101,
+      "bestLines": 101
+    },
+    {
+      "nickname": "テスト１",
+      "totalWins": 3,
+      "totalMatches": 3,
+      "winRate": 1,
+      "bestScore": 19300,
+      "totalLines": 140,
+      "bestLines": 74
+    },
+    {
+      "nickname": "Guest",
+      "totalWins": 1,
+      "totalMatches": 1,
+      "winRate": 1,
+      "bestScore": 17200,
+      "totalLines": 84,
+      "bestLines": 84
+    },
+    {
+      "nickname": "わ",
+      "totalWins": 2,
+      "totalMatches": 2,
+      "winRate": 1,
+      "bestScore": 9850,
+      "totalLines": 57,
+      "bestLines": 46
+    },
+    {
+      "nickname": "か",
+      "totalWins": 7,
+      "totalMatches": 7,
+      "winRate": 1,
+      "bestScore": 6250,
+      "totalLines": 174,
+      "bestLines": 39
+    },
+    {
+      "nickname": "U.S",
+      "totalWins": 1,
+      "totalMatches": 1,
+      "winRate": 1,
+      "bestScore": 600,
+      "totalLines": 5,
+      "bestLines": 5
+    }
+  ],
+  "multi": [
+    {
+      "nickname": "殺助",
+      "totalWins": 4,
+      "totalMatches": 4,
+      "winRate": 1,
+      "bestScore": 3200,
+      "totalLines": 45,
+      "bestLines": 13
+    },
+    {
+      "nickname": "U.S",
+      "totalWins": 3,
+      "totalMatches": 3,
+      "winRate": 1,
+      "bestScore": 3500,
+      "totalLines": 25,
+      "bestLines": 14
+    },
+    {
+      "nickname": "テスト１",
+      "totalWins": 0,
+      "totalMatches": 3,
+      "winRate": 0,
+      "bestScore": 400,
+      "totalLines": 4,
+      "bestLines": 4
+    },
+    {
+      "nickname": "わ",
+      "totalWins": 0,
+      "totalMatches": 4,
+      "winRate": 0,
+      "bestScore": 200,
+      "totalLines": 4,
+      "bestLines": 2
+    }
+  ],
+  "all": [
+    {
+      "nickname": "か",
+      "totalWins": 7,
+      "totalMatches": 7,
+      "winRate": 1,
+      "bestScore": 6250,
+      "totalLines": 174,
+      "bestLines": 39
+    },
+    {
+      "nickname": "殺助",
+      "totalWins": 5,
+      "totalMatches": 5,
+      "winRate": 1,
+      "bestScore": 20800,
+      "totalLines": 146,
+      "bestLines": 101
+    },
+    {
+      "nickname": "テスト１",
+      "totalWins": 3,
+      "totalMatches": 6,
+      "winRate": 0.5,
+      "bestScore": 19300,
+      "totalLines": 144,
+      "bestLines": 74
+    },
+    {
+      "nickname": "U.S",
+      "totalWins": 3,
+      "totalMatches": 3,
+      "winRate": 1,
+      "bestScore": 3500,
+      "totalLines": 25,
+      "bestLines": 14
+    },
+    {
+      "nickname": "わ",
+      "totalWins": 2,
+      "totalMatches": 6,
+      "winRate": 0.3333333333333333,
+      "bestScore": 9850,
+      "totalLines": 61,
+      "bestLines": 46
+    },
+    {
+      "nickname": "Guest",
+      "totalWins": 1,
+      "totalMatches": 1,
+      "winRate": 1,
+      "bestScore": 17200,
+      "totalLines": 84,
+      "bestLines": 84
+    },
+    {
+      "nickname": "U.S",
+      "totalWins": 1,
+      "totalMatches": 1,
+      "winRate": 1,
+      "bestScore": 600,
+      "totalLines": 5,
+      "bestLines": 5
+    }
+  ]
+}

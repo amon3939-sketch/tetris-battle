@@ -14,7 +14,8 @@
     "build:client": "cd packages/client && npx vite build",
     "build:server": "cd packages/server && npx tsc",
     "start": "node packages/server/dist/app.js",
-    "dev": "cd packages/server && npx tsx watch src/app.ts"
+    "dev": "cd packages/server && npx tsx watch src/app.ts",
+    "test": "npm run test -w packages/engine && npm run test -w packages/client && npm run test -w packages/server"
   },
   "engines": {
     "node": ">=18.0.0"

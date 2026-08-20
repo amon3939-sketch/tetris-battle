@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { initDatabase } from './db.js';
 import { RoomManager } from './room.js';
 import { registerEvents } from './events.js';
+import { techmanaEnabled } from './config.js';
+import { sessionSecretConfigured } from './auth/session.js';
+import { syncRouter, techmanaRouter } from './routes/techmana.js';
 
 // クラッシュ防止: 未処理エラーをキャッチしてログに出す
 process.on('uncaughtException', (err) => {
@@ -25,7 +28,16 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 // Express
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
-app.use(express.json());
+
+// 他のリクエストは小さいが、クラウドセーブだけは大きくなりうる。
+// /api/sync は自前で 1MB のパーサを持つので、こちらは道を譲る。
+// 譲らないと、先に走るこちらが既定の 100kb で 413 を返してしまい、
+// 下流の大きい上限が一生効かない。
+const smallJson = express.json();
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/sync')) return next();
+  smallJson(req, res, next);
+});
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -36,6 +48,23 @@ app.get('/health', (_req, res) => {
     nodeVersion: process.version,
     port: PORT,
   });
+});
+
+// テクマナ連携とクラウドセーブ。
+//
+// 下の SPA フォールバック（app.get('*')）より必ず先に登録すること。
+// あちらは /socket.io 以外の全 GET に index.html を返すので、後ろに
+// 置いた API ルートは一生呼ばれない。
+app.use('/api/auth/techmana', techmanaRouter());
+// セーブ本体は他のリクエストより大きくなりうるので、この経路だけ
+// 上限を上げる（テクマナ側の上限 1MB に合わせる）。
+app.use('/api/sync', express.json({ limit: '1mb' }), syncRouter());
+
+// 上で拾えなかった /api/* は、index.html ではなく 404 を返す。
+// SPA フォールバックに落ちると、綴りを間違えた API 呼び出しが HTML を
+// 受け取って「JSON のはずが < が来た」という分かりにくい失敗になる。
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'NOT_FOUND' });
 });
 
 // クライアントのビルド済みファイルを配信（離れた場所からのプレイ対応）
@@ -82,6 +111,11 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Tetris server listening on port ${PORT}`);
   console.log(`CORS origin: ${CORS_ORIGIN}`);
   console.log('Database: in-memory');
+  console.log(`Techmana SSO: ${techmanaEnabled() ? 'enabled' : 'disabled (未設定)'}`);
+  if (techmanaEnabled() && !sessionSecretConfigured()) {
+    // 鍵が毎起動ランダムになるため、再起動で全員ログアウトする。
+    console.warn('WARNING: SESSION_SECRET is not set — sessions will not survive a restart.');
+  }
   if (existsSync(clientDist)) {
     console.log(`Open http://localhost:${PORT} to play!`);
   }

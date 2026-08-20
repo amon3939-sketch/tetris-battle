@@ -6,6 +6,8 @@ import GamePage from './pages/GamePage.tsx';
 import ResultPage from './pages/ResultPage.tsx';
 import { soundManager } from './sounds.ts';
 import { captureTechmanaToken } from './techmana.ts';
+import { loadLocalBest, recordMatch, saveLocalBest } from './cloud/save.ts';
+import { scheduleCloudPush } from './cloud/sync.ts';
 import type { Board } from '@tetris/engine/src/types.ts';
 
 type Screen = 'lobby' | 'waiting' | 'game' | 'result';
@@ -56,6 +58,23 @@ export default function App() {
 
     const onGameOver = (data: GameOverData) => {
       setGameOverData(data);
+
+      // 自己ベストをこの端末に畳み込む。
+      //
+      // サーバ側の集計(db.ts)はインメモリで、Railway が再起動すれば
+      // 消える。テクマナ連携時はここで作った記録がクラウドへ上がるので、
+      // そちらは再起動を跨いで残る。
+      const mine = data.ranking.find((r) => r.socketId === socket.id);
+      if (mine) {
+        saveLocalBest(
+          recordMatch(loadLocalBest(), {
+            score: mine.score ?? 0,
+            lines: mine.linesCleared ?? 0,
+            won: mine.rank === 1,
+          }),
+        );
+        scheduleCloudPush();
+      }
       // Don't auto-navigate. GamePage will show overlay and user clicks to proceed.
     };
 
