@@ -68,9 +68,6 @@ export default function WaitingPage({ roomState, goToLobby }: Props) {
             color: '#00ccff', margin: 0,
             textShadow: '0 0 15px rgba(0,200,255,0.5), 0 2px 4px rgba(0,0,0,0.8)',
           }}>{roomState.room.name}</h1>
-          <div style={{
-            fontSize: 12, color: 'rgba(0,200,255,0.4)', letterSpacing: 3, marginTop: 6,
-          }}>WAITING FOR PLAYERS</div>
         </div>
 
         {/* Player List */}

@@ -27,6 +27,7 @@ export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }
   const { ranking } = gameOverData;
   const sorted = [...ranking].sort((a, b) => a.rank - b.rank);
   const myRank = sorted.find(p => p.socketId === socket.id)?.rank ?? 0;
+  const myScore = sorted.find(p => p.socketId === socket.id)?.score ?? 0;
 
   return (
     <div style={{ position: 'relative', width: '100%', minHeight: '100vh', overflow: 'auto' }}>
@@ -53,19 +54,16 @@ export default function ResultPage({ gameOverData, goToLobby, goToRoom, isSolo }
                 textShadow: '0 0 30px rgba(255,215,0,0.6), 0 0 80px rgba(255,215,0,0.3), 0 2px 4px rgba(0,0,0,0.8)',
                 animation: 'pulse 1.5s ease-in-out infinite',
               }}>WINNER!</div>
-              <div style={{ fontSize: 13, color: 'rgba(255,215,0,0.6)', letterSpacing: 4, marginTop: 4 }}>
-                CONGRATULATIONS
-              </div>
             </>
           ) : (
             <>
               <div style={{
-                fontSize: 40, fontWeight: 900, letterSpacing: 4,
-                color: '#00ccff',
-                textShadow: '0 0 20px rgba(0,200,255,0.5), 0 2px 4px rgba(0,0,0,0.8)',
-              }}>RESULT</div>
-              <div style={{ fontSize: 13, color: 'rgba(0,200,255,0.4)', letterSpacing: 3, marginTop: 4 }}>
-                {isSolo ? 'SOLO GAME' : 'MULTIPLAYER'}
+                fontSize: 48, fontWeight: 900, letterSpacing: 2,
+                color: '#ffaa00',
+                textShadow: '0 0 20px rgba(255,170,0,0.6), 0 2px 4px rgba(0,0,0,0.8)',
+              }}>{myScore.toLocaleString()}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,170,0,0.5)', letterSpacing: 3, marginTop: 4 }}>
+                スコア
               </div>
             </>
           )}

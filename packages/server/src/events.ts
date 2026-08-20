@@ -1,9 +1,9 @@
 import type { Server, Socket } from 'socket.io';
-import type { Action } from '@tetris/engine/src/types.js';
 import { RoomManager } from './room.js';
 import { ServerGameRoom } from './game.js';
 import type { Database } from './db.js';
 import { getRanking } from './db.js';
+import { verifyTechmanaToken } from './techmana.js';
 
 function sanitize(text: string): string {
   return text.replace(/<[^>]*>/g, '').slice(0, 140);
@@ -25,6 +25,19 @@ function emitRoomState(io: Server, room: ReturnType<RoomManager['getRoom']>) {
 export function registerEvents(io: Server, roomManager: RoomManager, db: Database): void {
   io.on('connection', (socket: Socket) => {
     console.log(`Connected: ${socket.id}`);
+
+    // テクマナ起動トークン検証（tm_token付きURLで起動された場合）
+    socket.on('auth:techmana', async ({ token }: { token: string }) => {
+      if (typeof token !== 'string' || !token) return;
+      const user = await verifyTechmanaToken(token);
+      if (!user) {
+        socket.emit('auth:techmana:error', { message: 'テクマナ認証に失敗しました' });
+        return;
+      }
+      socket.data.nickname = user.name;
+      socket.data.fingerprint = `tm:${user.userId}`;
+      socket.emit('auth:techmana:ok', user);
+    });
 
     // ニックネーム設定
     socket.on('player:setNickname', ({ nickname, fingerprint }: { nickname: string; fingerprint: string }) => {
@@ -164,18 +177,18 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
       gameRoom.start();
     });
 
-    // 入力アクション
-    socket.on('input:action', ({ action, seq }: { action: Action; seq: number }) => {
+    // 攻撃報告（クライアントがライン消去→サーバーがターゲットにルーティング）
+    socket.on('attack:report', ({ lines, holes, type }: { lines: number; holes: number[]; type: string }) => {
       const room = roomManager.getRoomBySocketId(socket.id);
       if (!room?.gameRoom) return;
-      room.gameRoom.processAction(socket.id, action, seq);
+      room.gameRoom.routeAttack(socket.id, lines, holes, type);
     });
 
-    // クライアントからのゲームオーバー通知（ローカルエンジンで検出）
-    socket.on('game:localGameOver', () => {
+    // クライアントからのゲームオーバー通知（ローカルエンジンで検出・スタッツ付き）
+    socket.on('game:localGameOver', (stats?: { score: number; linesCleared: number; tspinCount: number }) => {
       const room = roomManager.getRoomBySocketId(socket.id);
       if (!room?.gameRoom) return;
-      room.gameRoom.reportGameOver(socket.id);
+      room.gameRoom.reportGameOver(socket.id, stats);
     });
 
     // チャット
@@ -193,10 +206,20 @@ export function registerEvents(io: Server, roomManager: RoomManager, db: Databas
     });
 
     // ローカルボード同期（クライアントのローカルエンジン状態を他プレイヤーに転送）
-    socket.on('board:sync', (data: { board: any; currentPiece: any; score: number; linesCleared: number }) => {
+    socket.on('board:sync', (data: { board: any; currentPiece: any; score: number; linesCleared: number; tspinCount?: number }) => {
       const room = roomManager.getRoomBySocketId(socket.id);
       if (!room) return;
-      // 他プレイヤーのミニボード用にbroadcast（ローカルの正確な状態）
+
+      // ゲームルームのスタッツをキャッシュ（試合終了時のDB保存用）
+      if (room.gameRoom) {
+        room.gameRoom.updateStats(socket.id, {
+          score: data.score,
+          linesCleared: data.linesCleared,
+          tspinCount: data.tspinCount ?? 0,
+        });
+      }
+
+      // 他プレイヤーのミニボード用にbroadcast
       io.to(room.id).emit('board:update', {
         socketId: socket.id,
         board: data.board,

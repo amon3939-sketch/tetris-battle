@@ -140,11 +140,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             color: '#00ccff',
             textShadow: '0 0 20px rgba(0,200,255,0.6), 0 0 60px rgba(0,200,255,0.3), 0 2px 4px rgba(0,0,0,0.8)',
             margin: 0,
-          }}>TETRIS BATTLE</h1>
-          <div style={{
-            fontSize: 13, color: 'rgba(0,200,255,0.5)', letterSpacing: 4,
-            marginTop: 4,
-          }}>ONLINE MULTIPLAYER</div>
+          }}>テトックス</h1>
         </div>
 
         {/* Nickname + Connection */}
@@ -196,7 +192,7 @@ export default function LobbyPage({ nickname, setNickname }: Props) {
             boxShadow: '0 0 20px rgba(0,200,100,0.3)',
             textShadow: '0 1px 3px rgba(0,0,0,0.5)',
           }}>
-            1人プレイ
+            ソロプレイ
           </button>
           <button onClick={() => setShowCreate(true)} style={{
             padding: '14px 32px', fontSize: 16, fontWeight: 900,

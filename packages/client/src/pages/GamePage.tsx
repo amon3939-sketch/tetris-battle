@@ -76,13 +76,10 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const localTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [localState, setLocalState] = useState<GameState | null>(null);
 
-  // ===== サーバーデータ =====
-  const serverScoreRef = useRef(0);
-  const serverLinesRef = useRef(0);
-  const serverLevelRef = useRef(1);
-  const serverComboRef = useRef(-1);
-  const serverB2bRef = useRef(false);
+  // ミニボード同期用カウンタ
   const boardSyncCounterRef = useRef(0);
+  // T-spin累計（試合終了時のスタッツ報告用）
+  const tspinCountRef = useRef(0);
 
   // 画面振動
   const [screenShake, setScreenShake] = useState(false);
@@ -92,7 +89,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
   const [incomingAttack, setIncomingAttack] = useState(0);
   const [countdown, setCountdown] = useState<string | null>(null);
   const [gameActive, setGameActive] = useState(false);
-  const seqRef = useRef(0);
+  // seqRef 削除（input:action廃止のため不要）
   const attackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canvasRef = useRef<GameCanvasHandle>(null);
 
@@ -146,7 +143,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   // ===== Speed Up check =====
   useEffect(() => {
-    const lines = serverLinesRef.current;
+    const lines = localState?.linesCleared ?? 0;
     const level = Math.floor(lines / 10) + 1;
     if (level > lastSpeedUpLevelRef.current && lastSpeedUpLevelRef.current > 0 && lines > 0) {
       setShowSpeedUp(true);
@@ -164,6 +161,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
     if (gameReadyData.seed != null && !localEngineRef.current) {
       localEngineRef.current = new GameEngine({ seed: gameReadyData.seed, deferGarbage: true });
+      tspinCountRef.current = 0;
       setLocalState(localEngineRef.current.getState());
     }
 
@@ -197,28 +195,30 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
                   canvasRef.current.triggerLineClear(result.clearedRows);
                 }
               }
-              // ロック発生時：お邪魔ラインアニメーション開始
+              // ピース固定時：攻撃をサーバーに報告
+              if (result && result.attackLines > 0) {
+                const holes = Array.from({ length: result.attackLines }, () => Math.floor(Math.random() * 10));
+                const attackType = result.tSpin !== 'none' ? 'tspin' : result.linesCleared === 4 ? 'tetris' : 'normal';
+                socket.emit('attack:report', { lines: result.attackLines, holes, type: attackType });
+              }
+              if (result && result.tSpin !== 'none') {
+                tspinCountRef.current++;
+              }
               if (result) {
                 startGarbageAnimation();
               }
               const state = engine.getState();
-              setLocalState({
-                ...state,
-                score: Math.max(serverScoreRef.current, state.score),
-                linesCleared: Math.max(serverLinesRef.current, state.linesCleared),
-                level: Math.max(serverLevelRef.current, state.level),
-                combo: serverComboRef.current,
-                b2bActive: serverB2bRef.current || state.b2bActive,
-                isGameOver: state.isGameOver,
-              });
+              setLocalState(state);
 
+              // ミニボード同期（約200ms間隔 or ロック時）
               boardSyncCounterRef.current++;
-              if (boardSyncCounterRef.current % 12 === 0) {
+              if (boardSyncCounterRef.current % 12 === 0 || result) {
                 socket.emit('board:sync', {
                   board: state.board,
                   currentPiece: state.currentPiece,
                   score: state.score,
                   linesCleared: state.linesCleared,
+                  tspinCount: tspinCountRef.current,
                 });
               }
             }, 16);
@@ -244,14 +244,6 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   // ===== Socket events =====
   useEffect(() => {
-    const onStateAck = (data: any) => {
-      serverScoreRef.current = data.score ?? 0;
-      serverLinesRef.current = data.linesCleared ?? 0;
-      serverLevelRef.current = data.level ?? 1;
-      serverComboRef.current = data.combo ?? -1;
-      serverB2bRef.current = data.b2bActive ?? false;
-    };
-
     const onBoardUpdate = (data: { socketId: string; board: Board }) => {
       if (data.socketId === socket.id) return;
       setOtherBoards(prev => {
@@ -282,14 +274,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       setTimeout(() => setReceivedStamp(null), 2000);
     };
 
-    socket.on('game:state_ack', onStateAck);
     socket.on('board:update', onBoardUpdate);
     socket.on('attack:receive', onAttackReceive);
     socket.on('player:ko', onPlayerKO);
     socket.on('stamp:receive', onStamp);
 
     return () => {
-      socket.off('game:state_ack', onStateAck);
       socket.off('board:update', onBoardUpdate);
       socket.off('attack:receive', onAttackReceive);
       socket.off('player:ko', onPlayerKO);
@@ -320,20 +310,21 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       }
 
       if (localState?.isGameOver) {
-        socket.emit('game:localGameOver');
+        const finalState = localEngineRef.current?.getState();
+        socket.emit('game:localGameOver', {
+          score: finalState?.score ?? 0,
+          linesCleared: finalState?.linesCleared ?? 0,
+          tspinCount: tspinCountRef.current,
+        });
       }
     }
   }, [isGameOver, localState?.isGameOver]);
 
   // ===== Send action =====
   const sendAction = useCallback((action: Action) => {
-    seqRef.current++;
-    socket.emit('input:action', { action, seq: seqRef.current });
-
     if (action === 'hard_drop') soundManager.playSE('harddrop');
     else if (action === 'rotate_cw' || action === 'rotate_ccw') soundManager.playSE('rotate');
     else if (action === 'hold') {
-      // holdUsed中（既にホールド済み）なら効果音を鳴らさない
       const engine = localEngineRef.current;
       if (engine && !engine.getState().holdUsed) {
         soundManager.playSE('hold');
@@ -359,21 +350,21 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           canvasRef.current.triggerLineClear(result.clearedRows);
         }
       }
-      // ロック発生時：お邪魔ラインアニメーション開始
+      // ピース固定時：攻撃をサーバーに報告
+      if (result && result.attackLines > 0) {
+        const holes = Array.from({ length: result.attackLines }, () => Math.floor(Math.random() * 10));
+        const attackType = result.tSpin !== 'none' ? 'tspin' : result.linesCleared === 4 ? 'tetris' : 'normal';
+        socket.emit('attack:report', { lines: result.attackLines, holes, type: attackType });
+      }
+      if (result && result.tSpin !== 'none') {
+        tspinCountRef.current++;
+      }
       if (result) {
         startGarbageAnimation();
       }
 
       const state = engine.getState();
-      setLocalState({
-        ...state,
-        score: serverScoreRef.current,
-        linesCleared: serverLinesRef.current,
-        level: serverLevelRef.current,
-        combo: serverComboRef.current,
-        b2bActive: serverB2bRef.current,
-        isGameOver: state.isGameOver,
-      });
+      setLocalState(state);
     }
   }, []);
 
@@ -465,15 +456,7 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
       setGarbageStock(prev => Math.max(0, prev - 1));
       // 状態更新
       const state = eng.getState();
-      setLocalState({
-        ...state,
-        score: serverScoreRef.current,
-        linesCleared: serverLinesRef.current,
-        level: serverLevelRef.current,
-        combo: serverComboRef.current,
-        b2bActive: serverB2bRef.current,
-        isGameOver: state.isGameOver,
-      });
+      setLocalState(state);
       if (!hasMore) {
         if (garbageAnimTimerRef.current) clearInterval(garbageAnimTimerRef.current);
         garbageAnimTimerRef.current = null;
@@ -485,9 +468,23 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
 
   const otherPlayers = (roomState?.players ?? []).filter(p => p.socketId !== socket.id);
 
+  // ===== ウィンドウスケール =====
+  const [scale, setScale] = useState(() => {
+    const s = Math.min(window.innerWidth / 860, window.innerHeight / 680, 1.5);
+    return Math.max(s, 0.35);
+  });
+  useEffect(() => {
+    const update = () => {
+      const s = Math.min(window.innerWidth / 860, window.innerHeight / 680, 1.5);
+      setScale(Math.max(s, 0.35));
+    };
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100vh', overflow: 'hidden' }}>
-      {/* Water caustics background */}
+      {/* Background (not scaled) */}
       <div className="water-bg">
         <div className="water-caustics-layer">
           <div className="caustic" />
@@ -499,20 +496,12 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
         <div className="water-rays" />
       </div>
 
-      {/* Main game layout */}
-      <div style={{
-        position: 'relative',
-        zIndex: 1,
-        display: 'flex',
-        gap: 16,
-        padding: 16,
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        minHeight: '100vh',
-        paddingTop: '3vh',
-      }}>
-        {/* Top right buttons */}
-        <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
+      {/*
+        Fixed UI — position:fixed が transform の内側に入ると viewport 基準でなくなるため、
+        ここ（transform のない祖先）に配置する。
+      */}
+      {/* Top right buttons */}
+      <div style={{ position: 'fixed', top: 12, right: 12, zIndex: 300, display: 'flex', gap: 8 }}>
           <button onClick={openMenu} style={{
             background: 'rgba(0,30,60,0.8)', border: '1px solid rgba(0,200,255,0.4)', borderRadius: 8,
             padding: '6px 14px', color: '#00ccff', fontSize: 13, cursor: 'pointer', fontWeight: 700,
@@ -615,6 +604,43 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
             </div>
           </div>
         )}
+
+        {/* Received stamp (fixed, outside scaled area) */}
+        {receivedStamp && (
+          <div style={{
+            position: 'fixed', top: '20%', left: 40, zIndex: 400,
+            pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out',
+          }}>
+            <div style={{
+              padding: '16px 32px', borderRadius: 16,
+              background: receivedStamp.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,15,40,0.95)',
+              border: '2px solid rgba(0,200,255,0.3)', textAlign: 'center',
+              boxShadow: '0 0 30px rgba(0,0,0,0.5)',
+            }}>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>{receivedStamp.nickname}</div>
+              <div style={{
+                fontSize: receivedStamp.style === 'pop' ? 28 : 22,
+                fontWeight: receivedStamp.style === 'pop' ? 900 : 400,
+                color: '#fff',
+                fontFamily: receivedStamp.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
+                textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+              }}>
+                {receivedStamp.text}
+              </div>
+            </div>
+          </div>
+        )}
+
+      {/* ===== スケール付きゲームエリア ===== */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
+        <div style={{
+          transform: `scale(${scale})`,
+          transformOrigin: 'center center',
+          display: 'flex',
+          gap: 16,
+          padding: 16,
+          alignItems: 'flex-start',
+        }}>
 
         {/* Left side: Controls | Hold + Score + Chat */}
         <div style={{ display: 'flex', gap: 10, alignSelf: 'flex-start', marginTop: 0 }}>
@@ -833,32 +859,8 @@ export default function GamePage({ roomState, gameReadyData, nickname, isSolo, g
           )}
         </div>
 
-        {/* Received stamp */}
-        {receivedStamp && (
-          <div style={{
-            position: 'fixed', top: '20%', left: 40, zIndex: 400,
-            pointerEvents: 'none', animation: 'stampAppear 0.3s ease-out',
-          }}>
-            <div style={{
-              padding: '16px 32px', borderRadius: 16,
-              background: receivedStamp.style === 'pop' ? 'linear-gradient(135deg, #ff6b6b, #ffa500)' : 'rgba(0,15,40,0.95)',
-              border: '2px solid rgba(0,200,255,0.3)', textAlign: 'center',
-              boxShadow: '0 0 30px rgba(0,0,0,0.5)',
-            }}>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>{receivedStamp.nickname}</div>
-              <div style={{
-                fontSize: receivedStamp.style === 'pop' ? 28 : 22,
-                fontWeight: receivedStamp.style === 'pop' ? 900 : 400,
-                color: '#fff',
-                fontFamily: receivedStamp.style === 'serious' ? '"Yu Mincho", "Hiragino Mincho ProN", serif' : 'inherit',
-                textShadow: '0 2px 8px rgba(0,0,0,0.5)',
-              }}>
-                {receivedStamp.text}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>{/* end scale wrapper */}
+      </div>{/* end centering wrapper */}
     </div>
   );
 }

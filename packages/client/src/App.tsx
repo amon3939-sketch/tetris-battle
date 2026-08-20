@@ -5,6 +5,7 @@ import WaitingPage from './pages/WaitingPage.tsx';
 import GamePage from './pages/GamePage.tsx';
 import ResultPage from './pages/ResultPage.tsx';
 import { soundManager } from './sounds.ts';
+import { captureTechmanaToken } from './techmana.ts';
 import type { Board } from '@tetris/engine/src/types.ts';
 
 type Screen = 'lobby' | 'waiting' | 'game' | 'result';
@@ -68,6 +69,28 @@ export default function App() {
       socket.off('game:over', onGameOver);
     };
   }, [screen]);
+
+  // テクマナ起動連携: tm_token があればサーバーに検証を依頼し、ニックネームを引き継ぐ
+  useEffect(() => {
+    const token = captureTechmanaToken();
+    if (!token) return;
+
+    const authenticate = () => socket.emit('auth:techmana', { token });
+    const onOk = ({ userId, name }: { userId: string; name: string }) => {
+      setNickname(name);
+      localStorage.setItem('tetris_nickname', name);
+      socket.emit('player:setNickname', { nickname: name, fingerprint: `tm:${userId}` });
+    };
+
+    socket.on('connect', authenticate);
+    socket.on('auth:techmana:ok', onOk);
+    if (socket.connected) authenticate();
+
+    return () => {
+      socket.off('connect', authenticate);
+      socket.off('auth:techmana:ok', onOk);
+    };
+  }, []);
 
   const goToLobby = useCallback(() => {
     socket.emit('room:leave');
